@@ -1,4 +1,4 @@
-# RYM Chart Picker+ (1.1.2)
+# RYM Chart Picker+ (1.1.3)
 
 Fork de [RYM Music Chart Picker](https://github.com/Lin-808/rym-music-chart-picker) de Lin808.
 Usa la misma clave de settings, así que al reemplazar el script original no pierdes tu configuración.

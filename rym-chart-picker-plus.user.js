@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.1.2
+// @version      1.1.3
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -1091,23 +1091,26 @@ se|Northern Sami|Davvisámegiella|
 
     .rym-picker-small-note { color: var(--rym-muted); font-size: 12px; margin-top: 9px; line-height: 1.35; }
 
-    .rym-picker-type-presets { float: right; color: var(--rym-muted); font-size: 11px; user-select: none; }
+    .rym-picker-type-presets {
+      display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin: 2px 0 5px;
+      color: var(--rym-muted); font-size: 13px; user-select: none;
+    }
     .rym-picker-type-presets button {
-      background: none; border: 0; padding: 0 2px; margin: 0; color: var(--rym-muted); font: inherit; cursor: pointer;
+      background: none; border: 0; padding: 0; margin: 0; color: var(--rym-muted); font: inherit; cursor: pointer;
     }
     .rym-picker-type-presets button:hover { color: var(--rym-text); }
     .rym-picker-type-presets button.rym-picker-preset-on { color: var(--rym-blue-hover); font-weight: 700; }
-    .rym-picker-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 2px; }
+    .rym-picker-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
     .rym-picker-type-cell {
-      padding: 5px 2px; border: 1px solid var(--rym-border-2); border-radius: 2px; background: var(--rym-bg-2);
-      color: var(--rym-text); text-align: center; font-size: 12px; cursor: pointer; user-select: none;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      padding: 7px 1px; border: 1px solid var(--rym-border-2); border-radius: 3px; background: var(--rym-bg-2);
+      color: var(--rym-text); text-align: center; font-size: 11px; line-height: 1.2; cursor: pointer; user-select: none;
+      display: flex; align-items: center; justify-content: center; word-break: break-word;
     }
     .rym-picker-type-cell:hover { background: var(--rym-bg-3); }
-    .rym-picker-type-cell.rym-picker-type-on { background: var(--rym-blue); border-color: var(--rym-blue); color: #fff; }
+    .rym-picker-type-cell.rym-picker-type-on { background: var(--rym-blue); border-color: var(--rym-blue); color: #fff; font-weight: 700; }
     .rym-picker-type-cell.rym-picker-type-on:hover { background: var(--rym-blue-hover); }
     .rym-picker-type-cell.rym-picker-type-wide { grid-column: span 2; }
-    #rym-picker-types-note { margin-top: 4px; font-size: 11px; }
+    #rym-picker-types-note { margin-top: 5px; font-size: 11px; }
     .rym-picker-empty { color: var(--rym-empty); }
 
     #rym-picker-settings-block { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--rym-border) 65%, transparent); }
@@ -1243,13 +1246,14 @@ se|Northern Sami|Davvisámegiella|
       </div>
 
       <div class="rym-picker-row rym-picker-types-row">
-        <span class="rym-picker-label">Music releases <span class="rym-picker-chip-sub">Albums, EPs, etc.</span> <span class="rym-picker-type-presets">
-          <button type="button" data-type-preset="all" title="Every release type">all</button> |
-          <button type="button" data-type-preset="main" title="Album, EP, Mixtape, DJ Mix">main</button> |
-          <button type="button" data-type-preset="albums" title="Albums only">albums</button> |
-          <button type="button" data-type-preset="singles" title="Singles only">singles</button> |
+        <span class="rym-picker-label">Music releases <span class="rym-picker-chip-sub">Albums, EPs, etc.</span></span>
+        <div class="rym-picker-type-presets">
+          <button type="button" data-type-preset="all" title="Every release type">all</button><span>|</span>
+          <button type="button" data-type-preset="main" title="Album, EP, Mixtape, DJ Mix">main</button><span>|</span>
+          <button type="button" data-type-preset="albums" title="Albums only">albums</button><span>|</span>
+          <button type="button" data-type-preset="singles" title="Singles only">singles</button><span>|</span>
           <button type="button" data-type-preset="clear" title="Back to the default (the type of this page)">clear</button>
-        </span></span>
+        </div>
         <div id="rym-picker-types" class="rym-picker-type-grid"></div>
         <div id="rym-picker-types-note" class="rym-picker-small-note"></div>
       </div>
