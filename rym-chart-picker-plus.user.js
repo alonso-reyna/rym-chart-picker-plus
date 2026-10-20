@@ -1,7 +1,11 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
-// @namespace    https://github.com/alonsoreyna/rym-chart-picker-plus
-// @version      1.1.1
+// @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
+// @version      1.1.2
+// @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
+// @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
+// @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
+// @downloadURL  https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
 // @description  Pick release metadata on RYM, edit charts in place, filter by your most compatible users, and open a matching chart. Fork of Lin808's RYM Music Chart Picker.
 // @author       alonsoreyna (fork of Lin808)
 // @match        https://rateyourmusic.com/release/*
@@ -64,6 +68,19 @@
   ];
 
   const ALL_TYPE_SEGMENT = RELEASE_TYPES.map(type => type.slug).join(",");
+
+  // Same grid and shortcuts RYM shows in its own chart filter ("Music releases").
+  const TYPE_GRID = [
+    ["album", "ep", "mixtape", "djmix"],
+    ["single", "comp", "video", "unauth"],
+    ["musicvideo", "additional"]
+  ];
+  const TYPE_PRESETS = {
+    all: RELEASE_TYPES.map(type => type.slug),
+    main: ["album", "ep", "mixtape", "djmix"],
+    albums: ["album"],
+    singles: ["single"]
+  };
 
   const TYPE_BY_ALIAS = new Map();
   for (const type of RELEASE_TYPES) {
@@ -793,7 +810,7 @@ se|Northern Sami|Davvisámegiella|
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
     createState, parseChartPath, buildChartUrl, selectCompatUsers,
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
-    ALL_TYPE_SEGMENT, DEFAULT_SETTINGS
+    ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -1073,6 +1090,24 @@ se|Northern Sami|Davvisámegiella|
     .rym-picker-footer-img-rym { border-radius: 50%; }
 
     .rym-picker-small-note { color: var(--rym-muted); font-size: 12px; margin-top: 9px; line-height: 1.35; }
+
+    .rym-picker-type-presets { float: right; color: var(--rym-muted); font-size: 11px; user-select: none; }
+    .rym-picker-type-presets button {
+      background: none; border: 0; padding: 0 2px; margin: 0; color: var(--rym-muted); font: inherit; cursor: pointer;
+    }
+    .rym-picker-type-presets button:hover { color: var(--rym-text); }
+    .rym-picker-type-presets button.rym-picker-preset-on { color: var(--rym-blue-hover); font-weight: 700; }
+    .rym-picker-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 2px; }
+    .rym-picker-type-cell {
+      padding: 5px 2px; border: 1px solid var(--rym-border-2); border-radius: 2px; background: var(--rym-bg-2);
+      color: var(--rym-text); text-align: center; font-size: 12px; cursor: pointer; user-select: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rym-picker-type-cell:hover { background: var(--rym-bg-3); }
+    .rym-picker-type-cell.rym-picker-type-on { background: var(--rym-blue); border-color: var(--rym-blue); color: #fff; }
+    .rym-picker-type-cell.rym-picker-type-on:hover { background: var(--rym-blue-hover); }
+    .rym-picker-type-cell.rym-picker-type-wide { grid-column: span 2; }
+    #rym-picker-types-note { margin-top: 4px; font-size: 11px; }
     .rym-picker-empty { color: var(--rym-empty); }
 
     #rym-picker-settings-block { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--rym-border) 65%, transparent); }
@@ -1188,11 +1223,6 @@ se|Northern Sami|Davvisámegiella|
       <div id="rym-picker-status">Search mode disabled</div>
 
       <div class="rym-picker-row">
-        <span class="rym-picker-label">Release type</span>
-        <div id="rym-picker-types"></div>
-      </div>
-
-      <div class="rym-picker-row">
         <span class="rym-picker-label">Year</span>
         <div id="rym-picker-year"></div>
       </div>
@@ -1210,6 +1240,18 @@ se|Northern Sami|Davvisámegiella|
       <div class="rym-picker-row">
         <span class="rym-picker-label">Descriptors: d: <label class="rym-picker-inline-toggle"><input type="checkbox" data-match-all="descriptors"> must contain all</label></span>
         <div id="rym-picker-desc"></div>
+      </div>
+
+      <div class="rym-picker-row rym-picker-types-row">
+        <span class="rym-picker-label">Music releases <span class="rym-picker-chip-sub">Albums, EPs, etc.</span> <span class="rym-picker-type-presets">
+          <button type="button" data-type-preset="all" title="Every release type">all</button> |
+          <button type="button" data-type-preset="main" title="Album, EP, Mixtape, DJ Mix">main</button> |
+          <button type="button" data-type-preset="albums" title="Albums only">albums</button> |
+          <button type="button" data-type-preset="singles" title="Singles only">singles</button> |
+          <button type="button" data-type-preset="clear" title="Back to the default (the type of this page)">clear</button>
+        </span></span>
+        <div id="rym-picker-types" class="rym-picker-type-grid"></div>
+        <div id="rym-picker-types-note" class="rym-picker-small-note"></div>
       </div>
 
       <div class="rym-picker-row">
@@ -1402,6 +1444,14 @@ se|Northern Sami|Davvisámegiella|
     item.innerHTML = `<input type="radio" name="rym-listing-mode" data-listing-mode="${escapeHTML(value)}"><span>${escapeHTML(label)}</span>`;
     listingOptionsContainer.appendChild(item);
   }
+
+  document.querySelectorAll("[data-type-preset]").forEach(button => {
+    button.addEventListener("click", () => {
+      state.types.clear();
+      for (const slug of TYPE_PRESETS[button.dataset.typePreset] || []) state.types.add(slug);
+      render();
+    });
+  });
 
   for (const type of RELEASE_TYPES) {
     const item = document.createElement("label");
@@ -1767,8 +1817,8 @@ se|Northern Sami|Davvisámegiella|
     toggleBodyButton.textContent = state.bodyOpen ? "▴" : "▾";
     $("rym-picker-open").textContent = PAGE === "chart" ? "Update chart" : "Open chart";
 
-    renderSet("rym-picker-types", state.types, "types", `none — default: ${getDefaultTypeLabel()}`, typeLabel);
     renderYear();
+    renderTypes();
     renderSet("rym-picker-primary", state.primaryGenres, "primaryGenres");
     renderSet("rym-picker-secondary", state.secondaryGenres, "secondaryGenres");
     renderSet("rym-picker-desc", state.descriptors, "descriptors");
@@ -1847,7 +1897,17 @@ se|Northern Sami|Davvisámegiella|
     el.innerHTML = "";
 
     if (state.year.mode === "none") {
-      el.innerHTML = `<span class="rym-picker-empty">all time${state.releaseYear ? ` — click the release year to pick ${state.releaseYear}` : ""}</span>`;
+      const chip = document.createElement("span");
+      chip.className = "rym-picker-chip";
+      chip.textContent = "all time";
+      chip.title = state.releaseYear ? `Click to pick ${state.releaseYear}` : "Click the release year on the page to pick it";
+      if (state.releaseYear) {
+        chip.addEventListener("click", () => {
+          state.year = cycleYear(state.year, state.releaseYear);
+          render();
+        });
+      }
+      el.appendChild(chip);
     } else {
       const chip = document.createElement("span");
       chip.className = "rym-picker-chip rym-picker-chip-accent";
@@ -1860,6 +1920,42 @@ se|Northern Sami|Davvisámegiella|
       });
       el.appendChild(chip);
     }
+  }
+
+  function defaultTypeSlugs() {
+    return buildTypeSegment(state, settings, PAGE === "chart" ? "" : getCurrentPageTypeSlug()).split(",");
+  }
+
+  function renderTypes() {
+    const el = $("rym-picker-types");
+    el.innerHTML = "";
+    const custom = state.types.size > 0;
+    const selected = new Set(custom ? state.types : defaultTypeSlugs());
+
+    for (const row of TYPE_GRID) {
+      for (const slug of row) {
+        const cell = document.createElement("span");
+        cell.className = "rym-picker-type-cell";
+        if (row.length < 4) cell.classList.add("rym-picker-type-wide");
+        cell.classList.toggle("rym-picker-type-on", selected.has(slug));
+        cell.textContent = slug === "unauth" ? "Unauthorized" : slug === "additional" ? "Addl release" : typeLabel(slug);
+        cell.title = selected.has(slug) ? "Click to remove" : "Click to add";
+        cell.addEventListener("click", () => {
+          if (!custom) for (const s of selected) state.types.add(s);
+          toggleSetValue(state.types, slug);
+          render();
+        });
+        el.appendChild(cell);
+      }
+    }
+
+    document.querySelectorAll("[data-type-preset]").forEach(button => {
+      const preset = TYPE_PRESETS[button.dataset.typePreset];
+      const on = preset && preset.length === selected.size && preset.every(slug => selected.has(slug));
+      button.classList.toggle("rym-picker-preset-on", !!on);
+    });
+
+    $("rym-picker-types-note").textContent = custom ? "" : `default: ${getDefaultTypeLabel()}`;
   }
 
   function renderUsersChip() {
@@ -2045,11 +2141,11 @@ se|Northern Sami|Davvisámegiella|
     const el = $("rym-picker-lang");
     if (settings.defaultLanguageMode === "custom" && settings.defaultLanguageCustom.length > 0) {
       const labels = settings.defaultLanguageCustom.map(languageLabelFromCode);
-      el.innerHTML = `<span class="rym-picker-empty">none — default: ${escapeHTML(labels.join(", "))}</span>`;
+      el.innerHTML = `<span class="rym-picker-empty">default: ${escapeHTML(labels.join(", "))}</span>`;
       return;
     }
 
-    el.innerHTML = `<span class="rym-picker-empty">none — default: All languages</span>`;
+    el.innerHTML = `<span class="rym-picker-empty">none</span>`;
   }
 
   function renderDefaultLanguageChips() {

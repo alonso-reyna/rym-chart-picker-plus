@@ -23,7 +23,7 @@ Al pie del panel siempre ves el **URL** que se va a abrir. Si algo no cuadra, ah
    - **Género** (Alternative R&B, Art Pop…) → `g:` si está en la primera línea, `s:` si está en la segunda (influencias).
    - **Año** en "Released" → cicla `2019` → `2010s` → *all time*. Ver §3.
    - **Descriptor** (ethereal, melancholic…) → `d:`.
-   - **Type** (Album, EP…) y **Language** → `type` y `l:`.
+   - **Language** → `l:`. El **Type** se elige en la tabla **Music releases** del panel (ver §3b).
 3. Cada clic se agrega como un chip en el panel. Clic en el chip para quitarlo.
 4. **Open chart** → se abre en pestaña nueva.
 
@@ -32,7 +32,15 @@ Al pie del panel siempre ves el **URL** que se va a abrir. Si algo no cuadra, ah
 ## 3. Año
 
 Clic en el año del release cicla **año → década → all time**. El chip dice en qué modo está. Si no tocas
-nada, el chart es *all time*.
+nada, el chip dice *all time* (clic en ese chip también toma el año del disco).
+
+## 3b. Music releases
+
+Misma tabla que el filtro nativo de RYM en los charts: Album / EP / Mixtape / DJ Mix / Single / Compilation /
+Video / Unauthorized / Music video / Addl release. Por default está encendido el tipo del disco en el que estás
+(abajo dice *default: Same as release page (Mixtape)*); clic en una celda la enciende o apaga.
+Atajos arriba a la derecha: **all** (todos), **main** (Album, EP, Mixtape, DJ Mix), **albums**, **singles**,
+**clear** (regresa al default).
 
 ## 4. "Must contain all"
 

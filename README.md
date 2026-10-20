@@ -1,17 +1,22 @@
-# RYM Chart Picker+ (1.1.1)
+# RYM Chart Picker+ (1.1.2)
 
 Fork de [RYM Music Chart Picker](https://github.com/Lin-808/rym-music-chart-picker) de Lin808.
 Usa la misma clave de settings, así que al reemplazar el script original no pierdes tu configuración.
 
 Cómo se usa: [TUTORIAL.md](TUTORIAL.md). Contexto para retomar el desarrollo: [CLAUDE.md](CLAUDE.md).
 
-## Instalar (modo local, se actualiza desde el archivo)
+## Instalar
 
-1. `chrome://extensions` → Tampermonkey → Detalles → activa **Allow access to file URLs**.
-2. Dashboard de Tampermonkey → desactiva "RYM Music Chart Picker 1.0.2".
-3. Abre en la barra de direcciones `file:///<ruta a esta carpeta>/rym-chart-picker-plus.user.js` → **Install**.
-4. Tras cada cambio al archivo: Tampermonkey → **Check for userscript updates** → F5 en RYM.
-   (Dashboard → Settings → Config mode *Advanced* → Script Update → Check Interval *Always* lo hace solo.)
+Con Tampermonkey instalado, abre este link y dale **Install**:
+
+https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
+
+El script trae `@updateURL`, así que Tampermonkey se actualiza solo cada vez que hay push a `main`
+(Dashboard → Settings → Script Update → Check Interval; o "Check for userscript updates" para forzar).
+Desactiva "RYM Music Chart Picker 1.0.2" si lo tenías.
+
+Para desarrollar en local: abre `file:///<ruta a esta carpeta>/rym-chart-picker-plus.user.js` (necesita
+"Allow access to file URLs" en Tampermonkey) y sube `@version` tras cada cambio.
 
 ## Qué cambió respecto a 1.0.2
 
@@ -20,6 +25,7 @@ Cómo se usa: [TUTORIAL.md](TUTORIAL.md). Contexto para retomar el desarrollo: [
 - Username detectado desde el link de perfil del header; override manual en settings.
 - Resaltado limitado al bloque de info del release; `render()` ya no re-escanea toda la página.
 - **Año**: clic cicla año → década → all time.
+- **Music releases**: tabla de tipos como la nativa de RYM (all / main / albums / singles / clear), default = tipo de la página.
 - **Must contain all** por fila (géneros, influencias, descriptores); influencias encendido por default.
 - **Usuarios compatibles**: toggle + top N en el panel principal; sync de `find_similar_users`; score mínimo,
   exclusiones e "incluirme" en settings.

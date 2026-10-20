@@ -89,4 +89,10 @@ assert.equal(n.theme, "night"); assert.equal(n.compatTopN, 100); assert.deepEqua
 assert.equal(api.languageCode("English"), "en");
 assert.equal(api.languageCode("ja"), "ja");
 
+// release type grid / presets (mirror RYM's "Music releases" filter)
+assert.deepEqual(api.TYPE_GRID.flat().sort(), api.ALL_TYPE_SEGMENT.split(",").sort());
+assert.deepEqual(api.TYPE_PRESETS.main, ["album", "ep", "mixtape", "djmix"]);
+assert.equal(api.TYPE_PRESETS.all.join(","), api.ALL_TYPE_SEGMENT);
+for (const slug of Object.values(api.TYPE_PRESETS).flat()) assert.ok(api.typeFromText(slug), slug);
+
 console.log("all tests passed");

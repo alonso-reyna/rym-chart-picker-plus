@@ -17,8 +17,9 @@ Todo el código vive en `rym-chart-picker-plus.user.js`; es un solo archivo a pr
 2. Smoke test: `cd test/fixtures && cp ../../rym-chart-picker-plus.user.js script.js && python3 -m http.server 8765`,
    abre `http://localhost:8765/release/album/ecco2k/e/`, activa el panel y revisa `window.__errors` y el URL
    gris del panel. Borra `script.js` al terminar (no se versiona).
-3. En RYM real: el script está instalado en Tampermonkey desde `file://` de esta carpeta. Tras editar,
-   **sube `@version`** o Tampermonkey no recarga; luego "Check for userscript updates" y F5 en RYM.
+3. En RYM real: Tampermonkey instala desde el raw de GitHub (`@updateURL` en el header, repo
+   `alonso-reyna/rym-chart-picker-plus`, rama `main`). Tras editar, **sube `@version`** (si no, Tampermonkey
+   no actualiza), commit, push; luego "Check for userscript updates" y F5 en RYM.
 
 ## Hechos de RYM verificados (2026-10-20)
 
@@ -44,6 +45,9 @@ Cachéalos: cada uno costó una prueba en vivo y RYM los cambia sin avisar.
   esa lógica, agrega el caso al test.
 - UI en inglés (como RYM); docs y conversación en español.
 - Lo que el usuario descartó: campos de rango de año y botón ±N (quitados en 1.1.1, no los regreses).
+- Orden del panel (1.1.2, pedido por Alonso): Year · Primary · Secondary · Descriptors · Music releases · Languages · Users.
+  Year e idiomas sin texto explicativo ("all time" como chip, "none"). La tabla Music releases imita el filtro nativo
+  de RYM; `TYPE_PRESETS.albums`/`singles` están asumidos (album / single), no verificados contra RYM.
 
 ## Roadmap 1.2 (acordado, no empezado)
 
