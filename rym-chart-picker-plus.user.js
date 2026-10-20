@@ -1,0 +1,2551 @@
+// ==UserScript==
+// @name         RYM Chart Picker+
+// @namespace    https://github.com/alonsoreyna/rym-chart-picker-plus
+// @version      1.1.1
+// @description  Pick release metadata on RYM, edit charts in place, filter by your most compatible users, and open a matching chart. Fork of Lin808's RYM Music Chart Picker.
+// @author       alonsoreyna (fork of Lin808)
+// @match        https://rateyourmusic.com/release/*
+// @match        https://www.rateyourmusic.com/release/*
+// @match        https://rateyourmusic.com/charts/*
+// @match        https://www.rateyourmusic.com/charts/*
+// @match        https://rateyourmusic.com/find_similar_users*
+// @match        https://www.rateyourmusic.com/find_similar_users*
+// @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @run-at       document-idle
+// @license      MIT
+// ==/UserScript==
+
+(function () {
+  "use strict";
+
+  // Same key as the original script so existing settings carry over.
+  const STORAGE_KEY = "rym_chart_picker_settings_v16";
+  const COMPAT_KEY = "rym_chart_picker_compat_v1";
+  const COMPAT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // ---------------------------------------------------------------------------
+  // Static tables
+  // ---------------------------------------------------------------------------
+
+  const LISTING_OPTIONS = [
+    ["top", "Top"],
+    ["popular", "Popular"],
+    ["esoteric", "Esoteric"],
+    ["diverse", "Diverse"]
+  ];
+
+  // One table for release types: the URL slug RYM uses, the label we show and
+  // every spelling we may meet on a release page or in a URL.
+  const RELEASE_TYPES = [
+    { slug: "album", label: "Album", aliases: ["album"] },
+    { slug: "ep", label: "EP", aliases: ["ep"] },
+    { slug: "comp", label: "Compilation", aliases: ["compilation", "comp"] },
+    { slug: "single", label: "Single", aliases: ["single"] },
+    { slug: "video", label: "Video", aliases: ["video"] },
+    {
+      slug: "unauth",
+      label: "Bootleg / Unauthorized",
+      aliases: [
+        "unauthorized", "unauthorised", "unauth", "bootleg",
+        "bootleg unauthorized", "bootleg unauthorised",
+        "unauthorized bootleg", "unauthorised bootleg"
+      ]
+    },
+    { slug: "mixtape", label: "Mixtape", aliases: ["mixtape"] },
+    { slug: "musicvideo", label: "Music video", aliases: ["music video", "musicvideo"] },
+    { slug: "djmix", label: "DJ Mix", aliases: ["dj mix", "djmix"] },
+    {
+      slug: "additional",
+      label: "Additional",
+      aliases: ["additional", "additional release", "add release"]
+    }
+  ];
+
+  const ALL_TYPE_SEGMENT = RELEASE_TYPES.map(type => type.slug).join(",");
+
+  const TYPE_BY_ALIAS = new Map();
+  for (const type of RELEASE_TYPES) {
+    TYPE_BY_ALIAS.set(type.slug, type);
+    for (const alias of type.aliases) TYPE_BY_ALIAS.set(alias, type);
+  }
+
+  const HIGHLIGHT_COLORS = [
+    ["#ffb000", "Amber"], ["#f6d32d", "Yellow"], ["#ff7a00", "Orange"],
+    ["#e01b24", "Red"], ["#ff4f8b", "Pink"], ["#c061cb", "Purple"],
+    ["#813d9c", "Deep purple"], ["#1c71d8", "Blue"], ["#3584e4", "Light blue"],
+    ["#26a269", "Green"], ["#33d17a", "Light green"], ["#2ec27e", "Mint"],
+    ["#00a79d", "Teal"], ["#62a0ea", "Sky"], ["#c0bfbc", "Silver"],
+    ["#77767b", "Gray"], ["#f66151", "Coral"], ["#e66100", "Dark orange"],
+    ["#b5835a", "Brown"], ["#99c1f1", "Soft blue"], ["#dc8add", "Soft purple"],
+    ["#8ff0a4", "Soft green"], ["#f9f06b", "Soft yellow"], ["#ffffff", "White"]
+  ];
+
+  const LANGUAGE_DATA = `
+aa|Afar|Afaraf|
+am|Amharic|አማርኛ|
+ar|Arabic|العربية|
+ha|Hausa|Hausa, هَوُسَ|
+he|Hebrew|עברית|Hebrew modern, Modern Hebrew
+mt|Maltese|Malti|
+om|Oromo|Afaan Oromoo|
+so|Somali|Soomaaliga, af Soomaali|
+ti|Tigrinya|ትግርኛ|
+oj|Ojibwa|ᐊᓂᔑᓈᐯᒧᐎᓐ|
+cr|Cree|ᓀᐦᐃᔭᐍᐏᐣ|
+mn|Mongolian|монгол|
+tk|Turkmen|Türkmen, Түркмен|
+tr|Turkish|Türkçe|
+tt|Tatar|татарча, tatarça, تاتارچا|
+ug|Uyghur|Uyƣurqə, ئۇيغۇرچە|Uighur
+uz|Uzbek|O'zbek, Ўзбек, أۇزبېك|
+km|Khmer|ភាសាខ្មែរ|
+vi|Vietnamese|Tiếng Việt|
+ch|Chamorro|Chamoru|
+fj|Fijian|vosa Vakaviti|
+ho|Hiri Motu|Hiri Motu|
+id|Indonesian|Bahasa Indonesia|
+jv|Javanese|basa Jawa|
+mg|Malagasy|Malagasy fiteny|
+ms|Malay|bahasa Melayu, بهاس ملايو|
+mi|Māori|te reo Māori|Maori
+mh|Marshallese|Kajin M̧ajeļ|
+na|Nauru|Ekakairũ Naoero|
+sm|Samoan|gagana fa'a Samoa|
+su|Sundanese|Basa Sunda|
+tl|Tagalog|Wikang Tagalog|
+to|Tonga|faka Tonga|Tonga Islands
+ty|Tahitian|Reo Tahiti|
+ay|Aymara|aymar aru|
+eo|Esperanto|Esperanto|
+ia|Interlingua|Interlingua|
+ie|Interlingue|Occidental|
+io|Ido|Ido|
+vo|Volapük|Volapük|Volapuk
+bi|Bislama|Bislama|
+ht|Haitian Creole|Kreyòl ayisyen|Haitian
+sg|Sango|yângâ tî sängö|
+nv|Navajo|Diné bizaad|Navaho
+kn|Kannada|ಕನ್ನಡ|
+ml|Malayalam|മലയാളം|
+ta|Tamil|தமிழ்|
+te|Telugu|తెలుగు|
+ik|Inupiaq|Iñupiaq, Iñupiatun|
+iu|Inuktitut|ᐃᓄᒃᑎᑐᑦ|
+kl|Kalaallisut|kalaallisut, kalaallit oqaasii|Greenlandic
+et|Estonian|eesti, eesti keel|
+fi|Finnish|suomi, suomen kieli|
+hu|Hungarian|Magyar|
+kv|Komi|коми кыв|
+af|Afrikaans|Afrikaans|
+sq|Albanian|Shqip|
+an|Aragonese|Aragonés|
+hy|Armenian|Հայերեն|
+as|Assamese|অসমীয়া|
+ae|Avestan|avesta|
+be|Belarusian|Беларуская|
+bn|Bengali|বাংলা|
+bh|Bihari|भोजपुरी|
+bs|Bosnian|bosanski jezik|
+br|Breton|brezhoneg|
+bg|Bulgarian|български език|
+ca|Catalan|Català|Valencian
+kw|Cornish|Kernewek|
+co|Corsican|corsu, lingua corsa|
+hr|Croatian|hrvatski|
+cs|Czech|česky, čeština|
+da|Danish|dansk|
+dv|Divehi|ދިވެހި|Dhivehi, Maldivian
+nl|Dutch|Nederlands, Vlaams|
+en|English|English|
+fo|Faroese|føroyskt|
+fr|French|français, langue française|
+gl|Galician|Galego|
+de|German|Deutsch|
+el|Greek|Ελληνικά|Greek Modern, Modern Greek
+gu|Gujarati|ગુજરાતી|
+hi|Hindi|हिन्दी, हिंदी|
+ga|Irish|Gaeilge|
+is|Icelandic|Íslenska|
+it|Italian|Italiano|
+ks|Kashmiri|कश्मीरी, كشميري|
+ku|Kurdish|Kurdî, كوردی|
+gv|Manx|Gaelg, Gailck|
+mr|Marathi|मराठी|
+nb|Norwegian Bokmål|Norsk bokmål|Norwegian Bokmal
+cu|Old Church Slavonic|ѩзыкъ словѣньскъ|Church Slavic, Church Slavonic, Old Bulgarian, Old Slavonic
+gd|Scottish Gaelic|Gàidhlig|Gaelic
+es|Spanish|español, castellano|Castilian
+sv|Swedish|svenska|
+wa|Walloon|Walon|
+la|Latin|latine, lingua latina|
+lb|Luxembourgish|Lëtzebuergesch|Letzeburgesch
+li|Limburgish|Limburgs|Limburgan, Limburger
+lt|Lithuanian|lietuvių kalba|
+lv|Latvian|latviešu valoda|
+mk|Macedonian|македонски јазик|
+ne|Nepali|नेपाली|
+nn|Norwegian Nynorsk|Norsk nynorsk|
+no|Norwegian|Norsk|
+oc|Occitan|Occitan|
+or|Oriya|ଓଡ଼ିଆ|
+os|Ossetian|ирон æвзаг|Ossetic
+pa|Punjabi|ਪੰਜਾਬੀ, پنجابی|Panjabi
+pi|Pāli|पाऴि|Pali
+fa|Persian|فارسی|
+pl|Polish|polski|
+ps|Pashto|پښتو|Pushto
+pt|Portuguese|Português|
+rm|Romansh|rumantsch grischun|
+ro|Romanian|română|Moldavian, Moldovan
+ru|Russian|русский язык|
+sa|Sanskrit|संस्कृतम्|
+sc|Sardinian|sardu|
+sd|Sindhi|सिन्धी, سنڌي، سندھی|
+sr|Serbian|српски језик|
+si|Sinhala|සිංහල|Sinhalese
+sk|Slovak|slovenčina|
+sl|Slovene|slovenščina|
+tg|Tajik|тоҷикӣ, toğikī, تاجیکی|
+uk|Ukrainian|українська|
+ur|Urdu|اردو|
+cy|Welsh|Cymraeg|
+fy|Western Frisian|Frysk|
+yi|Yiddish|ייִדיש|
+ja|Japanese|日本語|
+eu|Basque|euskara, euskera|
+ko|Korean|한국어, 조선말|
+qu|Quechua|Runa Simi, Kichwa|
+ak|Akan|Akan|
+bm|Bambara|bamanankan|
+ny|Chichewa|chiCheŵa, chinyanja|Chewa, Nyanja
+ee|Ewe|Eʋegbe|
+ff|Fula|Fulfulde, Pulaar, Pular|Fulah, Pulaar, Pular
+hz|Herero|Otjiherero|
+ig|Igbo|Asụsụ Igbo|
+ki|Kikuyu|Gĩkũyũ|Gikuyu
+rw|Kinyarwanda|Ikinyarwanda|
+kg|Kongo|KiKongo|
+kj|Kwanyama|Kuanyama|
+lg|Luganda|Luganda|
+ln|Lingala|Lingála|
+lu|Luba-Katanga||
+nd|North Ndebele|isiNdebele|
+ng|Ndonga|Owambo|
+nr|South Ndebele|isiNdebele|
+rn|Kirundi|kiRundi|
+sn|Shona|chiShona|
+st|Southern Sotho|Sesotho|
+sw|Swahili|Kiswahili|
+ss|Swati|SiSwati|
+tn|Tswana|Setswana|
+ts|Tsonga|itsonga|
+ve|Venda|Tshivenḓa|
+wo|Wolof|Wollof|
+xh|Xhosa|isiXhosa|
+yo|Yoruba|Yorùbá|
+zu|Zulu|isiZulu|
+kr|Kanuri|Kanuri|
+av|Avaric|авар мацӀ, магӀарул мацӀ|
+ce|Chechen|нохчийн мотт|
+ab|Abkhaz|аҧсуа|
+my|Burmese|ဗမာစာ|
+zh|Chinese|中文, 汉语, 漢語|
+dz|Dzongkha|རྫོང་ཁ|
+ii|Nuosu|ꆈꌠ꒿ Nuosuhxop|
+bo|Tibetan|བོད་ཡིག|Tibetan Standard, Central Tibetan
+ka|Georgian|ქართული|
+lo|Lao|ພາສາລາວ|
+th|Thai|ไทย|
+za|Zhuang|Saɯ cueŋƅ, Saw cuengh|Chuang
+gn|Guaraní|Avañe'ẽ|Guarani
+az|Azerbaijani|azərbaycan dili|
+ba|Bashkir|башҡорт теле|
+cv|Chuvash|чӑваш чӗлхи|
+kk|Kazakh|Қазақ тілі|
+ky|Kyrgyz|кыргыз тили|Kirghiz
+se|Northern Sami|Davvisámegiella|
+  `;
+
+  const ALL_LANGUAGE_OPTIONS = LANGUAGE_DATA
+    .trim()
+    .split("\n")
+    .map(line => {
+      const [code, name, nativeName = "", aliasesRaw = ""] = line.split("|");
+      return {
+        code: code.trim(),
+        name: name.trim(),
+        nativeName: nativeName.trim(),
+        aliases: aliasesRaw.split(",").map(alias => alias.trim()).filter(Boolean)
+      };
+    });
+
+  const POPULAR_LANGUAGE_CODES = [
+    "en", "ja", "es", "da", "fr", "no", "de", "fi", "pt", "sv",
+    "it", "nl", "ko", "pl", "zh", "tr", "ru", "ar", "id", "hi"
+  ];
+
+  const LANGUAGE_BY_CODE = new Map(ALL_LANGUAGE_OPTIONS.map(language => [language.code, language]));
+
+  const POPULAR_LANGUAGE_OPTIONS = POPULAR_LANGUAGE_CODES
+    .map(code => LANGUAGE_BY_CODE.get(code))
+    .filter(Boolean);
+
+  const LANGUAGE_MAP = buildLanguageMap();
+
+  const DEFAULT_SETTINGS = {
+    listingMode: "top",
+    defaultTypeMode: "page",
+    defaultTypeCustom: [],
+    userFilters: ["all"],
+    otherUsername: "",
+    ownUsername: "",
+    defaultLanguageMode: "all",
+    defaultLanguageCustom: [],
+    theme: "night",
+    placementMode: "page",
+    screenPosition: "top-right",
+    selectionStyle: "text",
+    highlightColor: "#ffb000",
+    influencesAll: true,
+    compatTopN: 10,
+    compatMinScore: 70,
+    compatIncludeMe: false,
+    compatExcluded: []
+  };
+
+  // ---------------------------------------------------------------------------
+  // Pure helpers (no DOM). Exported for tests when loaded under node.
+  // ---------------------------------------------------------------------------
+
+  function cleanText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function cleanMetadataToken(value) {
+    return cleanText(value).replace(/^,/, "").replace(/,$/, "").trim();
+  }
+
+  function cleanDescriptorToken(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .replace(/^descriptors\s*/i, "")
+      .replace(/^,/, "")
+      .replace(/,$/, "")
+      .trim();
+  }
+
+  function cleanUsername(value) {
+    return String(value || "").trim().replace(/^@/, "").replace(/[^a-zA-Z0-9._-]/g, "");
+  }
+
+  function normalizeTypeText(value) {
+    return cleanText(value).toLowerCase().replace(/[\/_-]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function typeFromText(value) {
+    return TYPE_BY_ALIAS.get(normalizeTypeText(value)) || null;
+  }
+
+  function typeLabel(slug) {
+    const type = TYPE_BY_ALIAS.get(slug);
+    return type ? type.label : slug;
+  }
+
+  function rymSlug(value) {
+    return String(value)
+      .trim()
+      .toLowerCase()
+      // RYM glues "&" to its neighbours: "R&B" -> "randb", "Rock & Roll" -> "rock-and-roll".
+      .replace(/&/g, "and")
+      .replace(/[’']/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-+/g, "-");
+  }
+
+  function slugFromGenreHref(href) {
+    const match = String(href || "").match(/\/genre\/([^/?#]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function labelFromSlug(slug) {
+    return String(slug || "")
+      .split("-")
+      .filter(Boolean)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+
+  function extractYear(value) {
+    const match = String(value || "").match(/\b(19|20)\d{2}\b/);
+    return match ? Number(match[0]) : null;
+  }
+
+  function decadeOf(year) {
+    return Math.floor(year / 10) * 10;
+  }
+
+  // Year filter model: { mode: "none" | "year" | "decade" | "range", from, to }
+  function emptyYear() {
+    return { mode: "none", from: null, to: null };
+  }
+
+  function yearSegment(year) {
+    if (!year || year.mode === "none") return "all-time";
+    if (year.mode === "year") return String(year.from);
+    if (year.mode === "decade") return `${decadeOf(year.from)}s`;
+    if (year.mode === "range") {
+      const from = Math.min(year.from, year.to);
+      const to = Math.max(year.from, year.to);
+      return from === to ? String(from) : `${from}-${to}`;
+    }
+    return "all-time";
+  }
+
+  function yearLabel(year) {
+    if (!year || year.mode === "none") return "";
+    if (year.mode === "year") return String(year.from);
+    if (year.mode === "decade") return `${decadeOf(year.from)}s`;
+    const from = Math.min(year.from, year.to);
+    const to = Math.max(year.from, year.to);
+    return from === to ? String(from) : `${from}–${to}`;
+  }
+
+  function parseYearSegment(segment) {
+    const value = String(segment || "").trim();
+    let match;
+    if ((match = value.match(/^(\d{4})$/))) {
+      return { mode: "year", from: Number(match[1]), to: Number(match[1]) };
+    }
+    if ((match = value.match(/^(\d{4})s$/))) {
+      const from = Number(match[1]);
+      return { mode: "decade", from, to: from + 9 };
+    }
+    if ((match = value.match(/^(\d{4})-(\d{4})$/))) {
+      return { mode: "range", from: Number(match[1]), to: Number(match[2]) };
+    }
+    return emptyYear();
+  }
+
+  // Click on a release year cycles: year -> decade -> all time -> year ...
+  function cycleYear(current, clickedYear) {
+    if (!current || current.mode === "none" || current.from !== clickedYear) {
+      return { mode: "year", from: clickedYear, to: clickedYear };
+    }
+    if (current.mode === "year") {
+      return { mode: "decade", from: clickedYear, to: clickedYear };
+    }
+    return emptyYear();
+  }
+
+  function rangeAround(year, span) {
+    const n = Math.max(0, Number(span) || 0);
+    return { mode: "range", from: year - n, to: year + n };
+  }
+
+  function createState() {
+    return {
+      page: "release",
+      active: false,
+      bodyOpen: false,
+      settingsOpen: false,
+      releaseYear: null,
+      types: new Set(),
+      year: emptyYear(),
+      primaryGenres: new Set(),
+      secondaryGenres: new Set(),
+      descriptors: new Set(),
+      languages: new Set(),
+      genreSlugs: new Map(),
+      // RYM's "must contain all": written as a leading "all" token, e.g. s:all,cloud-rap,ambient-pop
+      matchAll: { primary: false, secondary: false, descriptors: false },
+      urlUsers: null,
+      extraSegments: []
+    };
+  }
+
+  // Parse /charts/{listing}/{types}/{year}/{filters...}/ into a state object.
+  function parseChartPath(pathname) {
+    const state = createState();
+    state.page = "chart";
+
+    const parts = String(pathname || "")
+      .split("/")
+      .filter(Boolean)
+      .map(part => {
+        try { return decodeURIComponent(part); } catch { return part; }
+      });
+
+    if (parts[0] !== "charts") return { state, listing: null };
+
+    const listing = LISTING_OPTIONS.some(([value]) => value === parts[1]) ? parts[1] : null;
+
+    const typeSegment = parts[2] || "";
+    const typeSlugs = typeSegment.split(",").filter(slug => TYPE_BY_ALIAS.has(slug));
+    if (typeSlugs.length > 0 && typeSegment !== ALL_TYPE_SEGMENT) {
+      typeSlugs.forEach(slug => state.types.add(slug));
+    }
+
+    state.year = parseYearSegment(parts[3]);
+
+    for (const part of parts.slice(4)) {
+      const colon = part.indexOf(":");
+      const prefix = colon === -1 ? "" : part.slice(0, colon);
+      const rest = colon === -1 ? "" : part.slice(colon + 1);
+      let items = rest.split(",").map(item => item.trim()).filter(Boolean);
+
+      const matchKey = { g: "primary", s: "secondary", d: "descriptors" }[prefix];
+      if (matchKey && items[0] === "all") {
+        state.matchAll[matchKey] = true;
+        items = items.slice(1);
+      }
+
+      if (prefix === "g" || prefix === "s") {
+        const target = prefix === "g" ? state.primaryGenres : state.secondaryGenres;
+        for (const slug of items) {
+          const label = labelFromSlug(slug.replace(/^-/, ""));
+          const display = slug.startsWith("-") ? `-${label}` : label;
+          target.add(display);
+          state.genreSlugs.set(display, slug);
+        }
+      } else if (prefix === "d") {
+        items.forEach(slug => state.descriptors.add(labelFromSlugKeepCase(slug)));
+      } else if (prefix === "l") {
+        items.forEach(code => state.languages.add(code));
+      } else if (prefix === "u") {
+        state.urlUsers = items;
+      } else {
+        state.extraSegments.push(part);
+      }
+    }
+
+    return { state, listing };
+  }
+
+  function labelFromSlugKeepCase(slug) {
+    return String(slug || "").replace(/-/g, " ");
+  }
+
+  function genreSlug(state, name) {
+    const known = state.genreSlugs.get(name);
+    if (known) return known;
+    if (name.startsWith("-")) return "-" + rymSlug(name.slice(1));
+    return rymSlug(name);
+  }
+
+  function descriptorSlug(name) {
+    if (name.startsWith("-")) return "-" + rymSlug(name.slice(1));
+    return rymSlug(name);
+  }
+
+  function languageCode(value) {
+    const raw = String(value || "").trim();
+    if (LANGUAGE_BY_CODE.has(raw.toLowerCase())) return raw.toLowerCase();
+    const key = normalizeLanguageKey(raw);
+    return LANGUAGE_MAP.get(key) || rymSlug(raw);
+  }
+
+  function languageLabelFromCode(code) {
+    const language = LANGUAGE_BY_CODE.get(code);
+    return language ? language.name : code;
+  }
+
+  function buildTypeSegment(state, settings, pageTypeSlug) {
+    if (state.types.size > 0) return Array.from(state.types).join(",");
+    if (settings.defaultTypeMode === "all") return ALL_TYPE_SEGMENT;
+
+    if (settings.defaultTypeMode === "custom") {
+      const valid = settings.defaultTypeCustom.filter(slug => TYPE_BY_ALIAS.has(slug));
+      if (valid.length > 0) return valid.join(",");
+    }
+
+    return pageTypeSlug || ALL_TYPE_SEGMENT;
+  }
+
+  function buildLanguageSegment(state, settings) {
+    if (state.languages.size > 0) {
+      return "l:" + Array.from(state.languages).map(languageCode).join(",");
+    }
+
+    if (settings.defaultLanguageMode === "custom" && settings.defaultLanguageCustom.length > 0) {
+      const valid = settings.defaultLanguageCustom.filter(code => LANGUAGE_BY_CODE.has(code));
+      return valid.length > 0 ? "l:" + valid.join(",") : "";
+    }
+
+    return "";
+  }
+
+  // Compatible users after Top N, minimum score and manual exclusions.
+  function selectCompatUsers(compat, settings) {
+    const users = (compat && Array.isArray(compat.users)) ? compat.users : [];
+    const excluded = new Set((settings.compatExcluded || []).map(name => name.toLowerCase()));
+    const minScore = Number(settings.compatMinScore) || 0;
+    const topN = Math.max(1, Number(settings.compatTopN) || 10);
+
+    return users
+      .filter(user => user.score >= minScore)
+      .slice(0, topN)
+      .filter(user => !excluded.has(user.username.toLowerCase()));
+  }
+
+  function buildUserSegment(state, settings, context) {
+    if (state.urlUsers && state.urlUsers.length > 0) {
+      return "u:" + state.urlUsers.join(",");
+    }
+
+    const filters = settings.userFilters || ["all"];
+    if (filters.includes("all")) return "";
+
+    const me = cleanUsername(context.ownUsername);
+    const other = cleanUsername(settings.otherUsername);
+    const parts = [];
+
+    if (filters.includes("following") && me) parts.push(`followed_by:${me}`);
+    if (filters.includes("followers") && me) parts.push(`followers_of:${me}`);
+    if (filters.includes("myself") && me) parts.push(me);
+    if (filters.includes("other") && other) parts.push(other);
+
+    if (filters.includes("compat")) {
+      const names = selectCompatUsers(context.compat, settings).map(user => user.username);
+      if (settings.compatIncludeMe && me && !filters.includes("myself")) names.unshift(me);
+      parts.push(...names);
+    }
+
+    const unique = Array.from(new Set(parts));
+    return unique.length > 0 ? "u:" + unique.join(",") : "";
+  }
+
+  function buildChartUrl(state, settings, context) {
+    const listing = LISTING_OPTIONS.some(([value]) => value === settings.listingMode)
+      ? settings.listingMode
+      : "top";
+
+    const pieces = [
+      "https://rateyourmusic.com",
+      "charts",
+      listing,
+      buildTypeSegment(state, settings, context.pageTypeSlug),
+      yearSegment(state.year)
+    ];
+
+    const allPrefix = key => (state.matchAll && state.matchAll[key] ? "all," : "");
+
+    if (state.primaryGenres.size > 0) {
+      pieces.push("g:" + allPrefix("primary") + Array.from(state.primaryGenres).map(name => genreSlug(state, name)).join(","));
+    }
+
+    if (state.descriptors.size > 0) {
+      pieces.push("d:" + allPrefix("descriptors") + Array.from(state.descriptors).map(descriptorSlug).join(","));
+    }
+
+    if (state.secondaryGenres.size > 0) {
+      pieces.push("s:" + allPrefix("secondary") + Array.from(state.secondaryGenres).map(name => genreSlug(state, name)).join(","));
+    }
+
+    const languageSegment = buildLanguageSegment(state, settings);
+    if (languageSegment) pieces.push(languageSegment);
+
+    const userSegment = buildUserSegment(state, settings, context);
+    if (userSegment) pieces.push(userSegment);
+
+    pieces.push(...state.extraSegments);
+
+    return pieces.join("/") + "/";
+  }
+
+  function parseCompatDocument(doc) {
+    const items = Array.from(doc.querySelectorAll("li[id^='page_user_compat_item']"));
+    const users = [];
+
+    for (const item of items) {
+      const link = item.querySelector("a.user[href^='/~'], a[href^='/~']");
+      if (!link) continue;
+
+      const username = cleanUsername(link.getAttribute("href").replace(/^\/~/, ""));
+      if (!username) continue;
+
+      const bar = item.querySelector(".page_user_compat_pct");
+      const width = bar ? parseFloat(bar.style.width) : NaN;
+      const rankText = bar ? parseInt(cleanText(bar.textContent), 10) : NaN;
+
+      users.push({
+        username,
+        score: Number.isFinite(width) ? Math.round(width * 10) / 10 : 0,
+        rank: Number.isFinite(rankText) ? rankText : users.length + 1
+      });
+    }
+
+    return users;
+  }
+
+  function buildLanguageMap() {
+    const map = new Map();
+
+    for (const language of ALL_LANGUAGE_OPTIONS) {
+      const values = [language.code, language.name, language.nativeName, ...language.aliases];
+      for (const value of values) {
+        if (!value) continue;
+        for (const token of splitLanguageAliases(value)) {
+          const key = normalizeLanguageKey(token);
+          if (key) map.set(key, language.code);
+        }
+      }
+    }
+
+    return map;
+  }
+
+  function splitLanguageAliases(value) {
+    return String(value).split(/[;,/]/).map(part => part.trim()).filter(Boolean);
+  }
+
+  function normalizeLanguageKey(value) {
+    return normalizeSearchText(value).replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeSearchText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[’']/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function languageSearchBlob(language) {
+    return normalizeSearchText([language.code, language.name, language.nativeName, ...language.aliases].join(" "));
+  }
+
+  function addUnique(array, value) {
+    if (!array.includes(value)) array.push(value);
+  }
+
+  function removeValue(array, value) {
+    const index = array.indexOf(value);
+    if (index !== -1) array.splice(index, 1);
+  }
+
+  function toggleSetValue(set, value) {
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+  }
+
+  function isValidHex(value) {
+    return /^#[0-9a-fA-F]{6}$/.test(String(value || ""));
+  }
+
+  function hexToRgba(hex, alpha) {
+    const clean = String(hex || "#ffb000").replace("#", "");
+    const r = parseInt(clean.slice(0, 2), 16);
+    const g = parseInt(clean.slice(2, 4), 16);
+    const b = parseInt(clean.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function escapeHTML(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function normalizeSettings(parsed) {
+    const defaults = { ...DEFAULT_SETTINGS };
+    if (!parsed || typeof parsed !== "object") return defaults;
+
+    const pick = (key, allowed) => allowed.includes(parsed[key]) ? parsed[key] : defaults[key];
+    const arrayOf = key => Array.isArray(parsed[key]) ? parsed[key].filter(v => typeof v === "string") : defaults[key];
+    const intIn = (key, min, max) => {
+      const n = parseInt(parsed[key], 10);
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defaults[key];
+    };
+
+    return {
+      ...defaults,
+      ...parsed,
+      listingMode: pick("listingMode", LISTING_OPTIONS.map(([value]) => value)),
+      defaultTypeMode: pick("defaultTypeMode", ["all", "page", "custom"]),
+      defaultTypeCustom: arrayOf("defaultTypeCustom").filter(slug => TYPE_BY_ALIAS.has(slug)),
+      userFilters: arrayOf("userFilters").length > 0 ? arrayOf("userFilters") : ["all"],
+      otherUsername: cleanUsername(parsed.otherUsername),
+      ownUsername: cleanUsername(parsed.ownUsername),
+      defaultLanguageMode: pick("defaultLanguageMode", ["all", "custom"]),
+      defaultLanguageCustom: arrayOf("defaultLanguageCustom"),
+      theme: pick("theme", ["auto", "night", "evening", "light"]),
+      placementMode: pick("placementMode", ["page", "screen"]),
+      screenPosition: pick("screenPosition", ["top-right", "bottom-right", "top-left", "bottom-left"]),
+      selectionStyle: pick("selectionStyle", ["text", "box"]),
+      highlightColor: isValidHex(parsed.highlightColor) ? parsed.highlightColor : defaults.highlightColor,
+      influencesAll: parsed.influencesAll !== false,
+      compatTopN: intIn("compatTopN", 1, 100),
+      compatMinScore: intIn("compatMinScore", 0, 100),
+      compatIncludeMe: parsed.compatIncludeMe === true,
+      compatExcluded: arrayOf("compatExcluded")
+    };
+  }
+
+  const PURE_API = {
+    rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
+    yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
+    createState, parseChartPath, buildChartUrl, selectCompatUsers,
+    buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
+    ALL_TYPE_SEGMENT, DEFAULT_SETTINGS
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = PURE_API;
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Runtime: page detection, storage, panel
+  // ---------------------------------------------------------------------------
+
+  const pathname = window.location.pathname;
+  const PAGE = /^\/release\//.test(pathname) ? "release"
+    : /^\/charts\//.test(pathname) ? "chart"
+    : /^\/find_similar_users/.test(pathname) ? "compat"
+    : null;
+
+  if (!PAGE) return;
+
+  const settings = loadSettings();
+  let compat = loadCompat();
+
+  if (PAGE === "compat") {
+    captureCompatFromCurrentPage();
+    return;
+  }
+
+  const state = PAGE === "chart" ? initChartState() : createState();
+  state.page = PAGE;
+
+  if (PAGE === "release") {
+    state.releaseYear = detectReleaseYear();
+    state.matchAll.secondary = settings.influencesAll;
+  }
+
+  function loadSettings() {
+    try {
+      const raw = GM_getValue(STORAGE_KEY, "");
+      if (!raw) return { ...DEFAULT_SETTINGS };
+      return normalizeSettings(JSON.parse(raw));
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  function saveSettings() {
+    GM_setValue(STORAGE_KEY, JSON.stringify(settings));
+  }
+
+  function loadCompat() {
+    try {
+      const raw = GM_getValue(COMPAT_KEY, "");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.users)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveCompat(users, forUser) {
+    compat = { users, forUser, syncedAt: Date.now() };
+    GM_setValue(COMPAT_KEY, JSON.stringify(compat));
+  }
+
+  function initChartState() {
+    const { state: parsed, listing } = parseChartPath(pathname);
+    if (listing && listing !== settings.listingMode) {
+      settings.listingMode = listing;
+      saveSettings();
+    }
+    return parsed;
+  }
+
+  function captureCompatFromCurrentPage() {
+    const users = parseCompatDocument(document);
+    if (users.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const forUser = cleanUsername(params.get("user")) || getOwnUsername();
+    const me = getOwnUsername();
+
+    // Only store the list when it is the logged-in user's own list.
+    if (me && forUser && me.toLowerCase() !== forUser.toLowerCase()) return;
+
+    saveCompat(users, forUser);
+    toast(`Chart Picker+: saved ${users.length} compatible users.`);
+  }
+
+  function getOwnUsername() {
+    if (settings.ownUsername) return settings.ownUsername;
+
+    const link = document.querySelector('a.header_profile_main[href^="/~"], #header_extended_section a[href^="/~"]');
+    if (link) return cleanUsername(link.getAttribute("href").replace(/^\/~/, ""));
+
+    return "";
+  }
+
+  const OWN_USERNAME = getOwnUsername();
+
+  function detectReleaseYear() {
+    const row = findRowsByLabel("released")[0];
+    if (!row) return null;
+    return extractYear(getRowValueText(row));
+  }
+
+  function getCurrentPageTypeSlug() {
+    const match = pathname.match(/^\/release\/([^/]+)\//);
+    if (!match) return "";
+    const type = typeFromText(match[1]);
+    return type ? type.slug : "";
+  }
+
+  function buildContext() {
+    return {
+      ownUsername: OWN_USERNAME,
+      compat,
+      pageTypeSlug: getCurrentPageTypeSlug()
+    };
+  }
+
+  function currentChartUrl() {
+    return buildChartUrl(state, settings, buildContext());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Styles
+  // ---------------------------------------------------------------------------
+
+  GM_addStyle(`
+    :root {
+      --rym-picker-highlight-bg: rgba(255, 176, 0, .30);
+      --rym-picker-highlight-border: #ffb000;
+    }
+
+    .rym-picker-selected-target { text-decoration: none !important; }
+
+    .rym-picker-style-box .rym-picker-selected-target {
+      background-color: var(--rym-picker-highlight-bg) !important;
+      box-shadow: inset 0 0 0 1px var(--rym-picker-highlight-border), 0 0 0 1px var(--rym-picker-highlight-border) !important;
+      border-radius: 2px !important;
+    }
+
+    .rym-picker-style-text .rym-picker-selected-target,
+    .rym-picker-style-text .rym-picker-selected-target * {
+      background: transparent !important;
+      box-shadow: none !important;
+      color: var(--rym-picker-highlight-border) !important;
+      font-weight: 700 !important;
+      border-radius: 0 !important;
+    }
+
+    .rym-picker-selected-target * { text-decoration: none !important; }
+
+    [data-rym-descriptor-token], [data-rym-type-token], [data-rym-language-token] {
+      cursor: crosshair; border-radius: 2px; padding: 0 1px; display: inline;
+    }
+
+    #rym-picker-panel {
+      --rym-bg: #171717; --rym-bg-2: #202020; --rym-bg-3: #2d2d2d;
+      --rym-border: #3b3b3b; --rym-border-2: #555;
+      --rym-text: #d7d7d7; --rym-muted: #9a9a9a; --rym-empty: #777;
+      --rym-blue: #1676d2; --rym-blue-hover: #2385e5; --rym-button-text: #fff;
+      --rym-chip-hover: #393939; --rym-chip-hover-border: #777;
+      z-index: 500; width: 350px; max-height: calc(100vh - 32px);
+      background: var(--rym-bg); border: 1px solid var(--rym-border); border-radius: 3px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.35); color: var(--rym-text);
+      font-family: "ProximaNova", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-feature-settings: "ss05" 1, "ss06" 1, "ss09" 1;
+      font-size: 13px; overflow: hidden;
+    }
+
+    #rym-picker-panel.rym-placement-page { position: absolute; top: 118px; right: 22px; left: auto; bottom: auto; }
+    #rym-picker-panel.rym-placement-screen { position: fixed; }
+    #rym-picker-panel.rym-screen-top-right { top: 118px; right: 22px; bottom: auto; left: auto; }
+    #rym-picker-panel.rym-screen-bottom-right { right: 22px; bottom: 22px; top: auto; left: auto; }
+    #rym-picker-panel.rym-screen-top-left { left: 22px; top: 118px; right: auto; bottom: auto; }
+    #rym-picker-panel.rym-screen-bottom-left { left: 22px; bottom: 22px; right: auto; top: auto; }
+
+    #rym-picker-header { display: flex; width: 100%; background: var(--rym-blue); border-bottom: 1px solid rgba(255,255,255,.15); }
+
+    #rym-picker-main-btn {
+      flex: 1; border: 0; background: var(--rym-blue); color: var(--rym-button-text);
+      padding: 9px 11px; font-weight: 700; cursor: pointer; text-align: left; font-size: 13px; font-family: inherit;
+    }
+
+    #rym-picker-toggle-body-btn, #rym-picker-quick-open-btn, #rym-picker-settings-btn {
+      width: 40px; border: 0; border-left: 1px solid rgba(255,255,255,.25);
+      background: var(--rym-blue); color: var(--rym-button-text); font-size: 14px; cursor: pointer;
+      font-family: inherit; display: flex; align-items: center; justify-content: center;
+    }
+
+    #rym-picker-toggle-body-btn, #rym-picker-quick-open-btn { display: none; }
+    #rym-picker-panel.rym-search-active #rym-picker-toggle-body-btn,
+    #rym-picker-panel.rym-search-active #rym-picker-quick-open-btn,
+    #rym-picker-panel.rym-page-chart #rym-picker-toggle-body-btn,
+    #rym-picker-panel.rym-page-chart #rym-picker-quick-open-btn { display: flex; }
+
+    #rym-picker-main-btn:hover, #rym-picker-toggle-body-btn:hover,
+    #rym-picker-quick-open-btn:hover, #rym-picker-settings-btn:hover { background: var(--rym-blue-hover); }
+
+    .rym-picker-icon { width: 15px; height: 15px; display: block; fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    #rym-picker-body { display: none; padding: 11px 12px 12px; max-height: calc(100vh - 112px); overflow-y: auto; scrollbar-width: thin; background: var(--rym-bg); }
+    #rym-picker-panel.rym-picker-open #rym-picker-body { display: block; }
+
+    #rym-picker-status { margin-bottom: 9px; color: var(--rym-blue-hover); font-weight: 700; }
+
+    .rym-picker-row { margin: 8px 0 11px; line-height: 1.35; }
+    .rym-picker-label { color: var(--rym-muted); display: block; margin-bottom: 4px; font-size: 12px; }
+
+    .rym-picker-chip {
+      display: inline-block; margin: 2px 3px 2px 0; padding: 3px 7px; border-radius: 3px;
+      background: var(--rym-bg-3); border: 1px solid var(--rym-border-2); color: var(--rym-text);
+      cursor: pointer; max-width: 305px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rym-picker-chip:hover { background: var(--rym-chip-hover); border-color: var(--rym-chip-hover-border); }
+    .rym-picker-chip.rym-picker-chip-accent { border-color: var(--rym-blue-hover); }
+    .rym-picker-chip-sub { color: var(--rym-muted); font-weight: 400; margin-left: 4px; }
+
+    .rym-picker-inline-toggle {
+      float: right; display: inline-flex; align-items: center; gap: 4px; color: var(--rym-muted);
+      font-size: 11px; cursor: pointer; user-select: none;
+    }
+    .rym-picker-inline-toggle input { margin: 0; }
+    .rym-picker-inline-toggle.rym-picker-toggle-on { color: var(--rym-text); }
+
+    .rym-picker-compat-toggle {
+      display: flex; align-items: center; gap: 7px; padding: 6px 8px; margin-bottom: 5px;
+      border: 1px solid var(--rym-border-2); border-radius: 3px; background: var(--rym-bg-2);
+      cursor: pointer; user-select: none; font-weight: 700;
+    }
+    .rym-picker-compat-toggle:hover { background: var(--rym-bg-3); }
+    .rym-picker-compat-toggle.rym-picker-toggle-on { border-color: var(--rym-blue-hover); }
+    .rym-picker-compat-toggle input { margin: 0; }
+    .rym-picker-compat-toggle select {
+      margin-left: auto; background: var(--rym-bg-3); color: var(--rym-text); border: 1px solid var(--rym-border-2);
+      border-radius: 3px; padding: 2px 4px; font-size: 12px; font-family: inherit; font-weight: 400;
+    }
+
+    .rym-picker-actions { display: flex; gap: 7px; margin-top: 12px; }
+    .rym-picker-action-btn {
+      flex: 1; background: var(--rym-bg-3); color: var(--rym-text); border: 1px solid var(--rym-border-2);
+      border-radius: 3px; padding: 7px 8px; cursor: pointer; font-weight: 700; font-family: inherit;
+    }
+    .rym-picker-action-btn:hover { background: var(--rym-bg-2); }
+    #rym-picker-open { background: var(--rym-blue); border-color: var(--rym-blue-hover); color: var(--rym-button-text); }
+    #rym-picker-open:hover { background: var(--rym-blue-hover); }
+
+    #rym-picker-url {
+      margin-top: 10px; padding: 6px 7px; border: 1px dashed var(--rym-border); border-radius: 3px;
+      background: var(--rym-bg-2); color: var(--rym-muted); font-size: 11px; line-height: 1.4;
+      word-break: break-all; cursor: text; user-select: all; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    #rym-picker-url:hover { color: var(--rym-text); }
+
+    .rym-picker-active-outline { outline: 2px solid var(--rym-blue-hover) !important; outline-offset: 2px !important; cursor: crosshair !important; }
+
+    .rym-picker-toast {
+      position: fixed; right: 24px; top: 55px; background: #202020; border: 1px solid #555; color: #d7d7d7;
+      padding: 8px 11px; border-radius: 3px; z-index: 9999999;
+      font: 13px "ProximaNova", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      box-shadow: 0 6px 18px rgba(0,0,0,.35);
+    }
+
+    .rym-picker-footer-links { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 2px; }
+    .rym-picker-footer-link {
+      display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-height: 32px;
+      padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--rym-text) !important;
+      text-decoration: none !important; line-height: 1; overflow: hidden; opacity: .92;
+    }
+    .rym-picker-footer-link:hover { background: var(--rym-bg-3); opacity: 1; transform: scale(1.06); }
+    .rym-picker-footer-icon { width: 19px; height: 19px; display: inline-flex; align-items: center; justify-content: center; color: var(--rym-text); fill: currentColor; }
+    .rym-picker-footer-icon svg { width: 19px; height: 19px; display: block; fill: currentColor; }
+    .rym-picker-footer-img { width: 19px; height: 19px; display: block; object-fit: contain; }
+    .rym-picker-footer-img-rym { border-radius: 50%; }
+
+    .rym-picker-small-note { color: var(--rym-muted); font-size: 12px; margin-top: 9px; line-height: 1.35; }
+    .rym-picker-empty { color: var(--rym-empty); }
+
+    #rym-picker-settings-block { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--rym-border) 65%, transparent); }
+    #rym-picker-panel.rym-settings-open #rym-picker-settings-block { display: block; }
+
+    .rym-picker-setting { margin-bottom: 13px; }
+    .rym-picker-setting-title { display: block; color: var(--rym-muted); margin-bottom: 6px; font-size: 12px; font-weight: 700; }
+
+    .rym-picker-checklist { display: grid; gap: 5px; }
+    .rym-picker-checkitem {
+      display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid var(--rym-border);
+      border-radius: 3px; background: var(--rym-bg-2); cursor: pointer; user-select: none;
+    }
+    .rym-picker-checkitem:hover { background: var(--rym-bg-3); }
+    .rym-picker-checkitem input { margin: 0; }
+    .rym-picker-checkitem .rym-picker-chip-sub { margin-left: auto; font-size: 11px; }
+    .rym-picker-two-col { grid-template-columns: 1fr 1fr; }
+
+    .rym-picker-listing-list { display: grid; gap: 5px; }
+    .rym-picker-listing-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--rym-border);
+      border-radius: 3px; background: var(--rym-bg-2); cursor: pointer; user-select: none; font-weight: 700; color: var(--rym-text);
+    }
+    .rym-picker-listing-item:hover { background: var(--rym-bg-3); }
+    .rym-picker-listing-item input { margin: 0; }
+
+    .rym-picker-setting select, .rym-picker-setting input[type="text"], .rym-picker-setting input[type="number"] {
+      width: 100%; box-sizing: border-box; background: var(--rym-bg-2); color: var(--rym-text);
+      border: 1px solid var(--rym-border-2); border-radius: 3px; padding: 6px 7px; font-size: 13px; font-family: inherit;
+    }
+
+    .rym-picker-inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .rym-picker-inline-fields label { display: block; color: var(--rym-muted); font-size: 11px; margin-bottom: 3px; }
+
+    .rym-picker-language-search-row { display: flex; gap: 6px; align-items: center; }
+    .rym-picker-language-search-row input { flex: 1; }
+
+    .rym-picker-mini-btn {
+      background: var(--rym-bg-3); color: var(--rym-text); border: 1px solid var(--rym-border-2); border-radius: 3px;
+      padding: 6px 8px; cursor: pointer; font-family: inherit; font-weight: 700; white-space: nowrap;
+    }
+    .rym-picker-mini-btn:hover { background: var(--rym-bg-2); }
+    .rym-picker-mini-btn.rym-picker-mini-btn-small { padding: 4px 7px; font-size: 12px; }
+
+    .rym-language-results, .rym-compat-list {
+      margin-top: 7px; max-height: 185px; overflow-y: auto; border: 1px solid var(--rym-border);
+      background: var(--rym-bg-2); border-radius: 3px; scrollbar-width: thin;
+    }
+
+    .rym-language-group-title {
+      padding: 6px 8px 4px; color: var(--rym-muted); font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .03em; border-top: 1px solid var(--rym-border);
+    }
+    .rym-language-group-title:first-child { border-top: 0; }
+
+    .rym-language-option {
+      display: block; width: 100%; box-sizing: border-box; text-align: left; border: 0; border-top: 1px solid var(--rym-border);
+      background: transparent; color: var(--rym-text); padding: 6px 8px; cursor: pointer; font-family: inherit; font-size: 12px;
+    }
+    .rym-language-option:hover { background: var(--rym-bg-3); }
+    .rym-language-option.rym-language-selected { background: var(--rym-blue); color: var(--rym-button-text); font-weight: 700; }
+    .rym-language-code { color: var(--rym-muted); font-weight: 700; margin-right: 5px; }
+    .rym-language-option.rym-language-selected .rym-language-code { color: var(--rym-button-text); }
+    .rym-language-native { color: var(--rym-muted); font-size: 11px; margin-left: 4px; }
+    .rym-language-option.rym-language-selected .rym-language-native { color: var(--rym-button-text); opacity: .82; }
+
+    .rym-compat-item {
+      display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-top: 1px solid var(--rym-border);
+      font-size: 12px; cursor: pointer; user-select: none;
+    }
+    .rym-compat-item:first-child { border-top: 0; }
+    .rym-compat-item:hover { background: var(--rym-bg-3); }
+    .rym-compat-item input { margin: 0; }
+    .rym-compat-item.rym-compat-excluded { color: var(--rym-empty); text-decoration: line-through; }
+    .rym-compat-rank { color: var(--rym-muted); width: 22px; text-align: right; }
+    .rym-compat-score { margin-left: auto; color: var(--rym-muted); }
+
+    .rym-color-palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; max-width: 245px; }
+    .rym-color-dot {
+      width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.4); padding: 0;
+    }
+    .rym-color-dot:hover { transform: scale(1.08); }
+    .rym-color-dot.rym-color-selected { outline: 2px solid var(--rym-text); outline-offset: 2px; }
+
+    .rym-picker-hidden { display: none !important; }
+    .rym-picker-detected { color: var(--rym-muted); font-size: 12px; margin-top: 5px; }
+    .rym-picker-default-chip-row { margin-top: 7px; }
+  `);
+
+  // ---------------------------------------------------------------------------
+  // Panel markup
+  // ---------------------------------------------------------------------------
+
+  const panel = document.createElement("div");
+  panel.id = "rym-picker-panel";
+  panel.classList.add(`rym-page-${PAGE}`);
+
+  panel.innerHTML = `
+    <div id="rym-picker-header">
+      <button id="rym-picker-main-btn">Chart Search: OFF</button>
+      <button id="rym-picker-toggle-body-btn" title="Show selected filters">▾</button>
+      <button id="rym-picker-quick-open-btn" title="Open chart" aria-label="Open chart">
+        <svg class="rym-picker-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" fill="none"></circle>
+          <path d="M16.5 16.5 21 21" fill="none"></path>
+        </svg>
+      </button>
+      <button id="rym-picker-settings-btn" title="Settings">⚙</button>
+    </div>
+
+    <div id="rym-picker-body">
+      <div id="rym-picker-status">Search mode disabled</div>
+
+      <div class="rym-picker-row">
+        <span class="rym-picker-label">Release type</span>
+        <div id="rym-picker-types"></div>
+      </div>
+
+      <div class="rym-picker-row">
+        <span class="rym-picker-label">Year</span>
+        <div id="rym-picker-year"></div>
+      </div>
+
+      <div class="rym-picker-row">
+        <span class="rym-picker-label">Primary genres: g: <label class="rym-picker-inline-toggle"><input type="checkbox" data-match-all="primary"> must contain all</label></span>
+        <div id="rym-picker-primary"></div>
+      </div>
+
+      <div class="rym-picker-row">
+        <span class="rym-picker-label">Secondary genres / influences: s: <label class="rym-picker-inline-toggle"><input type="checkbox" data-match-all="secondary"> must contain all</label></span>
+        <div id="rym-picker-secondary"></div>
+      </div>
+
+      <div class="rym-picker-row">
+        <span class="rym-picker-label">Descriptors: d: <label class="rym-picker-inline-toggle"><input type="checkbox" data-match-all="descriptors"> must contain all</label></span>
+        <div id="rym-picker-desc"></div>
+      </div>
+
+      <div class="rym-picker-row">
+        <span class="rym-picker-label">Languages: l:</span>
+        <div id="rym-picker-lang"></div>
+      </div>
+
+      <div class="rym-picker-row rym-picker-users-row">
+        <span class="rym-picker-label">Users: u:</span>
+        <label class="rym-picker-compat-toggle">
+          <input type="checkbox" id="rym-compat-toggle">
+          <span>Compatible users</span>
+          <select id="rym-compat-topn-quick" title="How many of your most compatible users">
+            <option value="5">top 5</option>
+            <option value="10">top 10</option>
+            <option value="25">top 25</option>
+            <option value="50">top 50</option>
+          </select>
+        </label>
+        <div id="rym-picker-users"></div>
+      </div>
+
+      <div class="rym-picker-actions">
+        <button class="rym-picker-action-btn" id="rym-picker-clear">Clear</button>
+        <button class="rym-picker-action-btn" id="rym-picker-open">Open chart</button>
+      </div>
+
+      <div id="rym-picker-url" title="Chart URL (click to select)"></div>
+
+      <div id="rym-picker-settings-block">
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Listing option</span>
+          <div class="rym-picker-listing-list" id="rym-listing-options"></div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Default release type when none is selected</span>
+          <div class="rym-picker-checklist">
+            <label class="rym-picker-checkitem"><input type="radio" name="rym-type-mode" data-type-mode="all"><span>All release types</span></label>
+            <label class="rym-picker-checkitem"><input type="radio" name="rym-type-mode" data-type-mode="page"><span>Same as release page</span></label>
+            <label class="rym-picker-checkitem"><input type="radio" name="rym-type-mode" data-type-mode="custom"><span>Custom (pick below)</span></label>
+          </div>
+          <div style="height: 7px;"></div>
+          <div class="rym-picker-checklist rym-picker-two-col" id="rym-type-custom-list"></div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Chart user filter</span>
+          <div class="rym-picker-checklist">
+            <label class="rym-picker-checkitem"><input type="checkbox" data-user-filter="all"><span>All users</span></label>
+            <label class="rym-picker-checkitem"><input type="checkbox" data-user-filter="compat"><span>My compatible users</span><span class="rym-picker-chip-sub" id="rym-compat-count-note"></span></label>
+            <label class="rym-picker-checkitem"><input type="checkbox" data-user-filter="following"><span>I'm following</span></label>
+            <label class="rym-picker-checkitem"><input type="checkbox" data-user-filter="followers"><span>Following me / my followers</span></label>
+            <label class="rym-picker-checkitem"><input type="checkbox" data-user-filter="myself"><span>Myself</span></label>
+            <label class="rym-picker-checkitem"><input type="checkbox" data-user-filter="other"><span>Other</span></label>
+          </div>
+        </div>
+
+        <div class="rym-picker-setting rym-picker-hidden" id="rym-other-username-wrap">
+          <span class="rym-picker-setting-title">Other username</span>
+          <input type="text" id="rym-setting-other-username" placeholder="Example: lin808" />
+        </div>
+
+        <div class="rym-picker-setting" id="rym-compat-wrap">
+          <span class="rym-picker-setting-title">Compatible users</span>
+          <div class="rym-picker-language-search-row">
+            <button class="rym-picker-mini-btn" id="rym-compat-sync" type="button">Sync now</button>
+            <span class="rym-picker-detected" id="rym-compat-status" style="margin-top:0"></span>
+          </div>
+          <div style="height: 7px;"></div>
+          <div class="rym-picker-inline-fields">
+            <div>
+              <label for="rym-compat-topn">Top N</label>
+              <select id="rym-compat-topn">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+            <div>
+              <label for="rym-compat-min">Min. score (%)</label>
+              <input type="number" id="rym-compat-min" min="0" max="100" step="1">
+            </div>
+          </div>
+          <div style="height: 7px;"></div>
+          <label class="rym-picker-checkitem"><input type="checkbox" id="rym-compat-include-me"><span>Include my own ratings</span></label>
+          <div class="rym-compat-list" id="rym-compat-list"></div>
+          <div class="rym-picker-small-note">Score is relative to your most compatible user (rank 1 = 100 %). Untick a user to leave them out.</div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Genre matching defaults</span>
+          <div class="rym-picker-checklist">
+            <label class="rym-picker-checkitem"><input type="checkbox" id="rym-setting-influences-all"><span>Influences: must contain all (default on)</span></label>
+          </div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Default languages when none is selected</span>
+          <div class="rym-picker-language-search-row">
+            <input type="text" id="rym-language-search" placeholder="Search language, e.g. In, ng, Japanese..." autocomplete="off" />
+            <button class="rym-picker-mini-btn" id="rym-language-clear" type="button">Clear</button>
+          </div>
+          <div class="rym-language-results" id="rym-language-results"></div>
+          <div class="rym-picker-default-chip-row" id="rym-language-default-chips"></div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Your username</span>
+          <input type="text" id="rym-setting-own-username" placeholder="Auto-detected from the RYM header" />
+          <div class="rym-picker-detected" id="rym-detected-username"></div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Picker theme</span>
+          <select id="rym-setting-theme">
+            <option value="auto">Auto / follow RYM theme</option>
+            <option value="night">Night</option>
+            <option value="evening">Evening</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Panel behavior</span>
+          <select id="rym-setting-placement-mode">
+            <option value="page">Scroll with page</option>
+            <option value="screen">Stay visible while scrolling</option>
+          </select>
+        </div>
+
+        <div class="rym-picker-setting rym-picker-hidden" id="rym-screen-position-wrap">
+          <span class="rym-picker-setting-title">Screen position</span>
+          <select id="rym-setting-screen-position">
+            <option value="top-right">Top right</option>
+            <option value="bottom-right">Bottom right</option>
+            <option value="top-left">Top left</option>
+            <option value="bottom-left">Bottom left</option>
+          </select>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Selection display style</span>
+          <select id="rym-setting-selection-style">
+            <option value="text">Bold text</option>
+            <option value="box">Outline box</option>
+          </select>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Selection highlight color</span>
+          <div class="rym-color-palette" id="rym-highlight-color-palette"></div>
+        </div>
+      </div>
+
+      <div class="rym-picker-footer-links" aria-label="Project links">
+        <a class="rym-picker-footer-link" href="https://github.com/Lin-808/rym-music-chart-picker" target="_blank" rel="noopener noreferrer" title="Original script by Lin808" aria-label="Original script by Lin808">
+          <span class="rym-picker-footer-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+          </span>
+        </a>
+        <a class="rym-picker-footer-link" href="https://rateyourmusic.com/~lin808" target="_blank" rel="noopener noreferrer" title="Lin808 on RYM" aria-label="Lin808 on RYM">
+          <img class="rym-picker-footer-img rym-picker-footer-img-rym" src="https://upload.wikimedia.org/wikipedia/commons/d/d0/Rate_Your_Music_logo.svg" alt="" loading="lazy">
+        </a>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+
+  const $ = id => document.getElementById(id);
+
+  const listingOptionsContainer = $("rym-listing-options");
+  const typeCustomList = $("rym-type-custom-list");
+  const languageSearchInput = $("rym-language-search");
+  const languageResults = $("rym-language-results");
+  const colorPalette = $("rym-highlight-color-palette");
+  const mainButton = $("rym-picker-main-btn");
+  const toggleBodyButton = $("rym-picker-toggle-body-btn");
+  const quickOpenButton = $("rym-picker-quick-open-btn");
+  const settingsButton = $("rym-picker-settings-btn");
+  const compatToggle = $("rym-compat-toggle");
+  const compatTopNQuick = $("rym-compat-topn-quick");
+
+  for (const [value, label] of LISTING_OPTIONS) {
+    const item = document.createElement("label");
+    item.className = "rym-picker-listing-item";
+    item.innerHTML = `<input type="radio" name="rym-listing-mode" data-listing-mode="${escapeHTML(value)}"><span>${escapeHTML(label)}</span>`;
+    listingOptionsContainer.appendChild(item);
+  }
+
+  for (const type of RELEASE_TYPES) {
+    const item = document.createElement("label");
+    item.className = "rym-picker-checkitem";
+    item.innerHTML = `<input type="checkbox" data-type-custom="${escapeHTML(type.slug)}"><span>${escapeHTML(type.label)}</span>`;
+    typeCustomList.appendChild(item);
+  }
+
+  for (const [color, label] of HIGHLIGHT_COLORS) {
+    const button = document.createElement("button");
+    button.className = "rym-color-dot";
+    button.type = "button";
+    button.dataset.highlightColor = color;
+    button.title = label;
+    button.style.background = color;
+    button.addEventListener("click", () => {
+      settings.highlightColor = color;
+      saveSettings();
+      render();
+      toast(`Highlight color: ${label}`);
+    });
+    colorPalette.appendChild(button);
+  }
+
+  panel.addEventListener("click", event => event.stopPropagation());
+  panel.addEventListener("mousedown", event => event.stopPropagation());
+
+  // ---------------------------------------------------------------------------
+  // Header and action buttons
+  // ---------------------------------------------------------------------------
+
+  mainButton.addEventListener("click", () => {
+    if (PAGE === "chart") {
+      state.bodyOpen = !state.bodyOpen;
+      state.settingsOpen = false;
+      render();
+      return;
+    }
+
+    state.active = !state.active;
+    state.bodyOpen = false;
+    state.settingsOpen = false;
+
+    if (!state.active) restoreAllTokenSpans();
+
+    toast(state.active ? "Search mode ON." : "Search mode OFF.");
+    render();
+  });
+
+  toggleBodyButton.addEventListener("click", () => {
+    state.bodyOpen = !state.bodyOpen;
+    state.settingsOpen = false;
+    render();
+  });
+
+  quickOpenButton.addEventListener("click", openChartFromState);
+  $("rym-picker-open").addEventListener("click", openChartFromState);
+
+  settingsButton.addEventListener("click", () => {
+    state.bodyOpen = true;
+    state.settingsOpen = !state.settingsOpen;
+    render();
+  });
+
+  $("rym-picker-clear").addEventListener("click", () => {
+    clearState();
+    render();
+    toast("Selection cleared.");
+  });
+
+  function openChartFromState(event) {
+    const filters = settings.userFilters;
+    const needsMe = filters.some(filter => ["following", "followers", "myself"].includes(filter))
+      || (filters.includes("compat") && settings.compatIncludeMe);
+
+    if (!state.urlUsers && needsMe && !OWN_USERNAME) {
+      toast("Could not detect your username. Set it in settings.");
+      state.bodyOpen = true;
+      state.settingsOpen = true;
+      render();
+      return;
+    }
+
+    if (!state.urlUsers && filters.includes("other") && !cleanUsername(settings.otherUsername)) {
+      toast("Other user filter is on, but Other username is empty.");
+      return;
+    }
+
+    if (!state.urlUsers && filters.includes("compat") && selectCompatUsers(compat, settings).length === 0) {
+      toast("No compatible users yet. Use Sync now in settings.");
+      state.bodyOpen = true;
+      state.settingsOpen = true;
+      render();
+      return;
+    }
+
+    const url = currentChartUrl();
+    const newTab = PAGE === "release" || (event && (event.shiftKey || event.metaKey || event.ctrlKey));
+
+    if (newTab) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      window.location.assign(url);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main-panel quick controls: "must contain all" and compatible users
+  // ---------------------------------------------------------------------------
+
+  document.querySelectorAll("[data-match-all]").forEach(input => {
+    input.addEventListener("change", () => {
+      state.matchAll[input.dataset.matchAll] = input.checked;
+      render();
+    });
+  });
+
+  function setCompatFilter(on) {
+    state.urlUsers = null;
+    if (on) {
+      removeValue(settings.userFilters, "all");
+      addUnique(settings.userFilters, "compat");
+    } else {
+      removeValue(settings.userFilters, "compat");
+      if (settings.userFilters.length === 0) settings.userFilters = ["all"];
+    }
+    saveSettings();
+    render();
+    if (on && compatIsStale()) syncCompat(true);
+  }
+
+  compatToggle.addEventListener("change", () => setCompatFilter(compatToggle.checked));
+
+  compatTopNQuick.addEventListener("click", event => event.stopPropagation());
+  compatTopNQuick.addEventListener("change", () => {
+    settings.compatTopN = parseInt(compatTopNQuick.value, 10) || 10;
+    state.urlUsers = null;
+    saveSettings();
+    render();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Settings controls
+  // ---------------------------------------------------------------------------
+
+  document.querySelectorAll("[data-listing-mode]").forEach(input => {
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      settings.listingMode = input.dataset.listingMode;
+      saveSettings();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-type-mode]").forEach(input => {
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      settings.defaultTypeMode = input.dataset.typeMode;
+      saveSettings();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-type-custom]").forEach(input => {
+    input.addEventListener("change", () => {
+      const value = input.dataset.typeCustom;
+      settings.defaultTypeMode = "custom";
+      if (input.checked) addUnique(settings.defaultTypeCustom, value);
+      else removeValue(settings.defaultTypeCustom, value);
+      if (settings.defaultTypeCustom.length === 0) settings.defaultTypeMode = "page";
+      saveSettings();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-user-filter]").forEach(input => {
+    input.addEventListener("change", () => {
+      const value = input.dataset.userFilter;
+      state.urlUsers = null; // user changed the filter: stop reusing the URL's list
+
+      if (value === "all") {
+        if (!input.checked) {
+          input.checked = true;
+          return;
+        }
+        settings.userFilters = ["all"];
+      } else {
+        removeValue(settings.userFilters, "all");
+        if (input.checked) addUnique(settings.userFilters, value);
+        else removeValue(settings.userFilters, value);
+        if (settings.userFilters.length === 0) settings.userFilters = ["all"];
+      }
+
+      saveSettings();
+      render();
+
+      if (value === "compat" && input.checked && !compat) syncCompat();
+    });
+  });
+
+  $("rym-compat-sync").addEventListener("click", () => syncCompat(true));
+
+  $("rym-compat-topn").addEventListener("change", event => {
+    settings.compatTopN = parseInt(event.target.value, 10) || 10;
+    state.urlUsers = null;
+    saveSettings();
+    render();
+  });
+
+  $("rym-compat-min").addEventListener("change", event => {
+    const value = parseInt(event.target.value, 10);
+    settings.compatMinScore = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 70;
+    state.urlUsers = null;
+    saveSettings();
+    render();
+  });
+
+  $("rym-compat-include-me").addEventListener("change", event => {
+    settings.compatIncludeMe = event.target.checked;
+    state.urlUsers = null;
+    saveSettings();
+    render();
+  });
+
+  $("rym-setting-influences-all").addEventListener("change", event => {
+    settings.influencesAll = event.target.checked;
+    state.matchAll.secondary = settings.influencesAll;
+    saveSettings();
+    render();
+  });
+
+  languageSearchInput.addEventListener("input", () => {
+    renderLanguageSearchResults(languageSearchInput.value);
+  });
+
+  $("rym-language-clear").addEventListener("click", () => {
+    settings.defaultLanguageMode = "all";
+    settings.defaultLanguageCustom = [];
+    languageSearchInput.value = "";
+    saveSettings();
+    render();
+  });
+
+  $("rym-setting-other-username").addEventListener("change", event => {
+    settings.otherUsername = cleanUsername(event.target.value);
+    saveSettings();
+    render();
+  });
+
+  $("rym-setting-own-username").addEventListener("change", event => {
+    settings.ownUsername = cleanUsername(event.target.value);
+    saveSettings();
+    toast("Reload the page to apply the username.");
+  });
+
+  $("rym-setting-theme").addEventListener("change", event => {
+    settings.theme = event.target.value;
+    saveSettings();
+    render();
+  });
+
+  $("rym-setting-placement-mode").addEventListener("change", event => {
+    settings.placementMode = event.target.value;
+    saveSettings();
+    render();
+  });
+
+  $("rym-setting-screen-position").addEventListener("change", event => {
+    settings.screenPosition = event.target.value;
+    saveSettings();
+    render();
+  });
+
+  $("rym-setting-selection-style").addEventListener("change", event => {
+    settings.selectionStyle = event.target.value === "box" ? "box" : "text";
+    saveSettings();
+    render();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Compatible users sync
+  // ---------------------------------------------------------------------------
+
+  let compatSyncing = false;
+
+  async function syncCompat(manual = false) {
+    if (compatSyncing) return;
+
+    if (!OWN_USERNAME) {
+      toast("Set your username in settings before syncing.");
+      return;
+    }
+
+    compatSyncing = true;
+    render();
+
+    const pageUrl = `/find_similar_users?user=${encodeURIComponent(OWN_USERNAME)}`;
+
+    try {
+      const response = await fetch(pageUrl, { credentials: "include" });
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const users = parseCompatDocument(doc);
+
+      if (!response.ok || users.length === 0) {
+        throw new Error(response.ok ? "empty" : `HTTP ${response.status}`);
+      }
+
+      saveCompat(users, OWN_USERNAME);
+      toast(`Synced ${users.length} compatible users.`);
+    } catch (error) {
+      // RYM's bot check blocks background fetches now and then. Opening the
+      // page lets this same script capture the list from there.
+      if (manual) {
+        toast("Sync blocked by RYM. Opening the page so it can be captured there.");
+        window.open(pageUrl, "_blank", "noopener,noreferrer");
+      }
+    } finally {
+      compatSyncing = false;
+      render();
+    }
+  }
+
+  function compatIsStale() {
+    return !compat || !compat.syncedAt || (Date.now() - compat.syncedAt) > COMPAT_MAX_AGE_MS;
+  }
+
+  if (settings.userFilters.includes("compat") && compatIsStale() && OWN_USERNAME) {
+    setTimeout(() => syncCompat(false), 1500);
+  }
+
+  function compatStatusText() {
+    if (compatSyncing) return "Syncing…";
+    if (!compat) return "Not synced yet.";
+    const days = Math.floor((Date.now() - compat.syncedAt) / 86400000);
+    const when = days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+    return `${compat.users.length} users · ${when}${compatIsStale() ? " · stale" : ""}`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  function render() {
+    applyThemeAndPlacement();
+    applyHighlightColorVars();
+    applySelectionStyleClass();
+
+    panel.classList.toggle("rym-search-active", state.active);
+    panel.classList.toggle("rym-picker-open", state.bodyOpen);
+    panel.classList.toggle("rym-settings-open", state.settingsOpen);
+
+    if (PAGE === "chart") {
+      mainButton.textContent = "Chart Picker+: edit this chart";
+      mainButton.style.background = "var(--rym-blue)";
+      $("rym-picker-status").textContent = "Editing current chart";
+    } else {
+      mainButton.textContent = state.active ? "Chart Search: ON" : "Chart Search: OFF";
+      mainButton.style.background = state.active ? "var(--rym-blue-hover)" : "var(--rym-blue)";
+      $("rym-picker-status").textContent = state.active ? "Search mode enabled" : "Search mode disabled";
+    }
+
+    toggleBodyButton.textContent = state.bodyOpen ? "▴" : "▾";
+    $("rym-picker-open").textContent = PAGE === "chart" ? "Update chart" : "Open chart";
+
+    renderSet("rym-picker-types", state.types, "types", `none — default: ${getDefaultTypeLabel()}`, typeLabel);
+    renderYear();
+    renderSet("rym-picker-primary", state.primaryGenres, "primaryGenres");
+    renderSet("rym-picker-secondary", state.secondaryGenres, "secondaryGenres");
+    renderSet("rym-picker-desc", state.descriptors, "descriptors");
+    renderLanguageSet();
+    renderUsersChip();
+
+    document.querySelectorAll("[data-listing-mode]").forEach(input => {
+      input.checked = settings.listingMode === input.dataset.listingMode;
+    });
+
+    document.querySelectorAll("[data-type-mode]").forEach(input => {
+      input.checked = settings.defaultTypeMode === input.dataset.typeMode;
+    });
+
+    document.querySelectorAll("[data-type-custom]").forEach(input => {
+      input.checked = settings.defaultTypeMode === "custom" && settings.defaultTypeCustom.includes(input.dataset.typeCustom);
+    });
+
+    document.querySelectorAll("[data-user-filter]").forEach(input => {
+      input.checked = settings.userFilters.includes(input.dataset.userFilter);
+    });
+
+    document.querySelectorAll("[data-highlight-color]").forEach(button => {
+      button.classList.toggle("rym-color-selected", button.dataset.highlightColor === settings.highlightColor);
+    });
+
+    $("rym-setting-other-username").value = settings.otherUsername;
+    $("rym-setting-own-username").value = settings.ownUsername;
+    $("rym-setting-theme").value = settings.theme;
+    $("rym-setting-placement-mode").value = settings.placementMode;
+    $("rym-setting-screen-position").value = settings.screenPosition;
+    $("rym-setting-selection-style").value = settings.selectionStyle;
+    $("rym-setting-influences-all").checked = settings.influencesAll;
+    $("rym-compat-topn").value = String(settings.compatTopN);
+    $("rym-compat-min").value = settings.compatMinScore;
+    $("rym-compat-include-me").checked = settings.compatIncludeMe;
+    $("rym-compat-status").textContent = compatStatusText();
+    $("rym-compat-sync").disabled = compatSyncing;
+    $("rym-compat-count-note").textContent = compat ? `${selectCompatUsers(compat, settings).length} selected` : "";
+
+    document.querySelectorAll("[data-match-all]").forEach(input => {
+      const key = input.dataset.matchAll;
+      const set = { primary: state.primaryGenres, secondary: state.secondaryGenres, descriptors: state.descriptors }[key];
+      input.checked = !!state.matchAll[key];
+      input.closest("label").classList.toggle("rym-picker-toggle-on", input.checked);
+      input.closest("label").classList.toggle("rym-picker-hidden", set.size === 0);
+    });
+
+    const compatOn = settings.userFilters.includes("compat") && !state.urlUsers;
+    compatToggle.checked = compatOn;
+    compatToggle.closest("label").classList.toggle("rym-picker-toggle-on", compatOn);
+    compatTopNQuick.value = String(settings.compatTopN);
+    compatTopNQuick.disabled = !compatOn;
+
+    $("rym-other-username-wrap").classList.toggle("rym-picker-hidden", !settings.userFilters.includes("other"));
+    $("rym-compat-wrap").classList.toggle("rym-picker-hidden", !settings.userFilters.includes("compat"));
+    $("rym-screen-position-wrap").classList.toggle("rym-picker-hidden", settings.placementMode !== "screen");
+
+    $("rym-detected-username").textContent = OWN_USERNAME
+      ? `Using: ${OWN_USERNAME}`
+      : "Not detected. Own-user filters will not work until you set it.";
+
+    if (state.settingsOpen) {
+      renderDefaultLanguageChips();
+      renderLanguageSearchResults(languageSearchInput.value);
+      renderCompatList();
+    }
+
+    $("rym-picker-url").textContent = currentChartUrl();
+
+    refreshPageHighlights();
+  }
+
+  function renderYear() {
+    const el = $("rym-picker-year");
+    el.innerHTML = "";
+
+    if (state.year.mode === "none") {
+      el.innerHTML = `<span class="rym-picker-empty">all time${state.releaseYear ? ` — click the release year to pick ${state.releaseYear}` : ""}</span>`;
+    } else {
+      const chip = document.createElement("span");
+      chip.className = "rym-picker-chip rym-picker-chip-accent";
+      const modeName = { year: "year", decade: "decade", range: "range" }[state.year.mode];
+      chip.innerHTML = `${escapeHTML(yearLabel(state.year))}<span class="rym-picker-chip-sub">${modeName}</span>`;
+      chip.title = state.year.mode === "range" ? "Click to remove" : "Click to cycle year → decade → all time";
+      chip.addEventListener("click", () => {
+        state.year = state.year.mode === "range" ? emptyYear() : cycleYear(state.year, state.year.from);
+        render();
+      });
+      el.appendChild(chip);
+    }
+  }
+
+  function renderUsersChip() {
+    const el = $("rym-picker-users");
+    el.innerHTML = "";
+
+    const chip = document.createElement("span");
+    chip.className = "rym-picker-chip";
+    chip.title = "Click to change the user filter";
+    chip.addEventListener("click", () => {
+      state.bodyOpen = true;
+      state.settingsOpen = true;
+      render();
+      const target = $("rym-compat-wrap").classList.contains("rym-picker-hidden")
+        ? document.querySelector("[data-user-filter='all']")
+        : $("rym-compat-wrap");
+      if (target) target.scrollIntoView({ block: "nearest" });
+    });
+
+    if (state.urlUsers && state.urlUsers.length > 0) {
+      chip.className += " rym-picker-chip-accent";
+      chip.innerHTML = `from URL<span class="rym-picker-chip-sub">${state.urlUsers.length} user${state.urlUsers.length === 1 ? "" : "s"}</span>`;
+      el.appendChild(chip);
+      return;
+    }
+
+    const filters = settings.userFilters;
+    if (filters.includes("all")) {
+      chip.textContent = "everyone";
+      el.appendChild(chip);
+      return;
+    }
+
+    const parts = [];
+    if (filters.includes("compat")) {
+      const n = selectCompatUsers(compat, settings).length;
+      parts.push(`${n} compatible`);
+    }
+    if (filters.includes("following")) parts.push("following");
+    if (filters.includes("followers")) parts.push("followers");
+    if (filters.includes("myself") || (filters.includes("compat") && settings.compatIncludeMe)) parts.push("me");
+    if (filters.includes("other")) parts.push(cleanUsername(settings.otherUsername) || "other (empty)");
+
+    chip.className += " rym-picker-chip-accent";
+    chip.textContent = parts.join(" + ");
+    el.appendChild(chip);
+  }
+
+  function renderCompatList() {
+    const el = $("rym-compat-list");
+    el.innerHTML = "";
+
+    if (!compat || compat.users.length === 0) {
+      el.innerHTML = `<div class="rym-compat-item rym-picker-empty">No list yet. Click Sync now.</div>`;
+      return;
+    }
+
+    const excluded = new Set(settings.compatExcluded.map(name => name.toLowerCase()));
+    const topN = Math.max(1, settings.compatTopN);
+    const candidates = compat.users.filter(user => user.score >= settings.compatMinScore).slice(0, topN);
+
+    if (candidates.length === 0) {
+      el.innerHTML = `<div class="rym-compat-item rym-picker-empty">Nobody passes the minimum score. Lower it.</div>`;
+      return;
+    }
+
+    for (const user of candidates) {
+      const isExcluded = excluded.has(user.username.toLowerCase());
+      const item = document.createElement("label");
+      item.className = "rym-compat-item" + (isExcluded ? " rym-compat-excluded" : "");
+      item.innerHTML = `
+        <input type="checkbox" ${isExcluded ? "" : "checked"}>
+        <span class="rym-compat-rank">${user.rank}</span>
+        <span>${escapeHTML(user.username)}</span>
+        <span class="rym-compat-score">${user.score.toFixed(0)} %</span>
+      `;
+      item.querySelector("input").addEventListener("change", event => {
+        if (event.target.checked) {
+          settings.compatExcluded = settings.compatExcluded.filter(name => name.toLowerCase() !== user.username.toLowerCase());
+        } else {
+          addUnique(settings.compatExcluded, user.username);
+        }
+        state.urlUsers = null;
+        saveSettings();
+        render();
+      });
+      el.appendChild(item);
+    }
+  }
+
+  function applyThemeAndPlacement() {
+    panel.classList.remove(
+      "rym-placement-page", "rym-placement-screen",
+      "rym-screen-top-right", "rym-screen-bottom-right", "rym-screen-top-left", "rym-screen-bottom-left"
+    );
+
+    if (settings.placementMode === "screen") {
+      panel.classList.add("rym-placement-screen", `rym-screen-${settings.screenPosition || "top-right"}`);
+    } else {
+      panel.classList.add("rym-placement-page");
+    }
+
+    const theme = settings.theme || "night";
+    const key = theme === "auto" ? `auto:${document.documentElement.className}` : theme;
+
+    if (themeCache.key !== key) {
+      themeCache.key = key;
+      themeCache.vars = theme === "auto" ? collectRYMThemeVars() : readRYMThemeVars(theme);
+    }
+
+    for (const [name, value] of Object.entries(themeCache.vars)) {
+      panel.style.setProperty(name, value);
+    }
+  }
+
+  const themeCache = { key: null, vars: {} };
+
+  function readRYMThemeVars(theme) {
+    const themeClassMap = { light: "theme_light", evening: "theme_eve", night: "theme_night" };
+    const wantedClass = themeClassMap[theme] || "theme_night";
+    const themeClasses = ["theme_light", "theme_eve", "theme_night", "theme_darkgray"];
+
+    const html = document.documentElement;
+    const body = document.body;
+    const oldHtmlClass = html.getAttribute("class") || "";
+    const oldBodyClass = body.getAttribute("class") || "";
+
+    html.classList.remove(...themeClasses);
+    body.classList.remove(...themeClasses);
+    html.classList.add(wantedClass);
+    body.classList.add(wantedClass);
+
+    const vars = collectRYMThemeVars();
+
+    html.setAttribute("class", oldHtmlClass);
+    body.setAttribute("class", oldBodyClass);
+
+    return vars;
+  }
+
+  function collectRYMThemeVars() {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const bodyStyle = getComputedStyle(document.body);
+    const cssVar = (name, fallback) =>
+      rootStyle.getPropertyValue(name).trim() || bodyStyle.getPropertyValue(name).trim() || fallback;
+
+    return {
+      "--rym-bg": cssVar("--surface-primary", cssVar("--background", "#171717")),
+      "--rym-bg-2": cssVar("--surface-secondary", "#202020"),
+      "--rym-bg-3": cssVar("--surface-tertiary", cssVar("--mono-f8", "#2d2d2d")),
+      "--rym-border": cssVar("--ui-detail-neutral", "#3b3b3b"),
+      "--rym-border-2": cssVar("--ui-detail-neutral", "#555"),
+      "--rym-text": cssVar("--text-primary", "#d7d7d7"),
+      "--rym-muted": cssVar("--text-secondary", "#9a9a9a"),
+      "--rym-empty": cssVar("--text-secondary", "#777"),
+      "--rym-blue": cssVar("--btn-primary-background-default", cssVar("--gen-blue-med", "#1676d2")),
+      "--rym-blue-hover": cssVar("--btn-primary-background-hover", cssVar("--gen-blue-darker", "#2385e5")),
+      "--rym-button-text": cssVar("--btn-primary-text", "#fff"),
+      "--rym-chip-hover": cssVar("--surface-secondary", "#393939"),
+      "--rym-chip-hover-border": cssVar("--ui-detail-neutral", "#777")
+    };
+  }
+
+  function applyHighlightColorVars() {
+    const color = isValidHex(settings.highlightColor) ? settings.highlightColor : "#ffb000";
+    document.documentElement.style.setProperty("--rym-picker-highlight-bg", hexToRgba(color, 0.30));
+    document.documentElement.style.setProperty("--rym-picker-highlight-border", color);
+  }
+
+  function applySelectionStyleClass() {
+    document.documentElement.classList.remove("rym-picker-style-text", "rym-picker-style-box");
+    document.documentElement.classList.add(settings.selectionStyle === "box" ? "rym-picker-style-box" : "rym-picker-style-text");
+  }
+
+  function renderLanguageSet() {
+    if (state.languages.size > 0) {
+      renderSet("rym-picker-lang", state.languages, "languages", "none", value =>
+        LANGUAGE_BY_CODE.has(value) ? `${languageLabelFromCode(value)}` : value
+      );
+      return;
+    }
+
+    const el = $("rym-picker-lang");
+    if (settings.defaultLanguageMode === "custom" && settings.defaultLanguageCustom.length > 0) {
+      const labels = settings.defaultLanguageCustom.map(languageLabelFromCode);
+      el.innerHTML = `<span class="rym-picker-empty">none — default: ${escapeHTML(labels.join(", "))}</span>`;
+      return;
+    }
+
+    el.innerHTML = `<span class="rym-picker-empty">none — default: All languages</span>`;
+  }
+
+  function renderDefaultLanguageChips() {
+    const el = $("rym-language-default-chips");
+    el.innerHTML = "";
+
+    if (settings.defaultLanguageMode !== "custom" || settings.defaultLanguageCustom.length === 0) {
+      el.innerHTML = `<span class="rym-picker-empty">Current default: All languages / no language filter</span>`;
+      return;
+    }
+
+    for (const code of settings.defaultLanguageCustom) {
+      const chip = document.createElement("span");
+      chip.className = "rym-picker-chip";
+      chip.textContent = languageLabelFromCode(code);
+      chip.title = "Click to remove from default languages";
+      chip.addEventListener("click", () => {
+        removeValue(settings.defaultLanguageCustom, code);
+        if (settings.defaultLanguageCustom.length === 0) settings.defaultLanguageMode = "all";
+        saveSettings();
+        render();
+      });
+      el.appendChild(chip);
+    }
+  }
+
+  function renderLanguageSearchResults(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    languageResults.innerHTML = "";
+
+    const allButton = document.createElement("button");
+    allButton.className = "rym-language-option";
+    allButton.type = "button";
+    allButton.innerHTML = `<span class="rym-language-code">all</span> All languages / no language filter`;
+    allButton.addEventListener("click", () => {
+      settings.defaultLanguageMode = "all";
+      settings.defaultLanguageCustom = [];
+      languageSearchInput.value = "";
+      saveSettings();
+      render();
+    });
+
+    languageResults.appendChild(groupTitle("No language filter"));
+    languageResults.appendChild(allButton);
+
+    if (!normalizedQuery) {
+      languageResults.appendChild(groupTitle("Popular"));
+      for (const language of POPULAR_LANGUAGE_OPTIONS) languageResults.appendChild(languageOptionButton(language));
+
+      languageResults.appendChild(groupTitle("All available languages"));
+      for (const language of ALL_LANGUAGE_OPTIONS) {
+        if (POPULAR_LANGUAGE_CODES.includes(language.code)) continue;
+        languageResults.appendChild(languageOptionButton(language));
+      }
+      return;
+    }
+
+    const filtered = ALL_LANGUAGE_OPTIONS
+      .filter(language => languageSearchBlob(language).includes(normalizedQuery))
+      .sort((a, b) => {
+        const aPopular = POPULAR_LANGUAGE_CODES.includes(a.code) ? 0 : 1;
+        const bPopular = POPULAR_LANGUAGE_CODES.includes(b.code) ? 0 : 1;
+        if (aPopular !== bPopular) return aPopular - bPopular;
+        return a.name.localeCompare(b.name);
+      });
+
+    languageResults.appendChild(groupTitle(`Results: ${filtered.length}`));
+
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "rym-language-option";
+      empty.textContent = "No matching language.";
+      languageResults.appendChild(empty);
+      return;
+    }
+
+    for (const language of filtered) languageResults.appendChild(languageOptionButton(language));
+  }
+
+  function groupTitle(text) {
+    const title = document.createElement("div");
+    title.className = "rym-language-group-title";
+    title.textContent = text;
+    return title;
+  }
+
+  function languageOptionButton(language) {
+    const selected = settings.defaultLanguageMode === "custom" && settings.defaultLanguageCustom.includes(language.code);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = selected ? "rym-language-option rym-language-selected" : "rym-language-option";
+    button.innerHTML = `
+      <span class="rym-language-code">${escapeHTML(language.code)}</span>
+      ${escapeHTML(language.name)}
+      ${language.nativeName ? `<span class="rym-language-native">${escapeHTML(language.nativeName)}</span>` : ""}
+    `;
+    button.addEventListener("click", () => {
+      settings.defaultLanguageMode = "custom";
+      if (settings.defaultLanguageCustom.includes(language.code)) removeValue(settings.defaultLanguageCustom, language.code);
+      else addUnique(settings.defaultLanguageCustom, language.code);
+      if (settings.defaultLanguageCustom.length === 0) settings.defaultLanguageMode = "all";
+      saveSettings();
+      render();
+    });
+    return button;
+  }
+
+  function renderSet(elementId, set, key, emptyText = "none", labelFor = value => value) {
+    const el = $(elementId);
+    el.innerHTML = "";
+
+    if (set.size === 0) {
+      el.innerHTML = `<span class="rym-picker-empty">${escapeHTML(emptyText)}</span>`;
+      return;
+    }
+
+    for (const item of set) {
+      const chip = document.createElement("span");
+      chip.className = "rym-picker-chip";
+      chip.textContent = labelFor(item);
+      chip.title = "Click to remove";
+      chip.addEventListener("click", () => {
+        state[key].delete(item);
+        render();
+      });
+      el.appendChild(chip);
+    }
+  }
+
+  function getDefaultTypeLabel() {
+    if (settings.defaultTypeMode === "all") return "All release types";
+    if (settings.defaultTypeMode === "custom" && settings.defaultTypeCustom.length > 0) {
+      return settings.defaultTypeCustom.map(typeLabel).join(", ");
+    }
+    if (PAGE === "chart") return "All release types";
+    const pageType = getCurrentPageTypeSlug();
+    return pageType ? `Same as release page (${typeLabel(pageType)})` : "Same as release page";
+  }
+
+  function clearState() {
+    state.types.clear();
+    state.year = emptyYear();
+    state.primaryGenres.clear();
+    state.secondaryGenres.clear();
+    state.descriptors.clear();
+    state.languages.clear();
+    state.genreSlugs.clear();
+    state.extraSegments = [];
+    state.matchAll = { primary: false, secondary: settings.influencesAll, descriptors: false };
+    // User filter is a setting, not a selection: Clear leaves it alone.
+  }
+
+  // ---------------------------------------------------------------------------
+  // Picking on release pages
+  // ---------------------------------------------------------------------------
+
+  function infoRoot() {
+    return document.querySelector(".album_info, .release_page .info") || document;
+  }
+
+  function refreshPageHighlights() {
+    document.querySelectorAll(".rym-picker-selected-target").forEach(element => {
+      element.classList.remove("rym-picker-selected-target");
+    });
+
+    if (PAGE !== "release") return;
+
+    if (!state.active) {
+      restoreAllTokenSpans();
+      return;
+    }
+
+    installAllTokenSpans();
+
+    const root = infoRoot();
+
+    if (state.year.mode !== "none") {
+      const selectedYear = String(state.year.from);
+      for (const row of findRowsByLabel("released")) {
+        row.querySelectorAll("a").forEach(anchor => {
+          const text = cleanText(anchor.textContent);
+          const href = anchor.getAttribute("href") || "";
+          if (text === selectedYear || href.includes(`/${selectedYear}/`) || href.includes(`/year/${selectedYear}`)) {
+            anchor.classList.add("rym-picker-selected-target");
+          }
+        });
+      }
+    }
+
+    root.querySelectorAll('a[href*="/genre/"]').forEach(anchor => {
+      const value = cleanMetadataToken(anchor.textContent);
+      if (state.primaryGenres.has(value) || state.secondaryGenres.has(value)) {
+        anchor.classList.add("rym-picker-selected-target");
+      }
+    });
+
+    root.querySelectorAll("[data-rym-descriptor-token]").forEach(span => {
+      if (state.descriptors.has(span.dataset.rymDescriptorToken || "")) span.classList.add("rym-picker-selected-target");
+    });
+
+    root.querySelectorAll("[data-rym-type-token]").forEach(span => {
+      if (state.types.has(span.dataset.rymTypeToken || "")) span.classList.add("rym-picker-selected-target");
+    });
+
+    root.querySelectorAll("[data-rym-language-token]").forEach(span => {
+      if (state.languages.has(span.dataset.rymLanguageToken || "")) span.classList.add("rym-picker-selected-target");
+    });
+  }
+
+  function installAllTokenSpans() {
+    installDescriptorTokenSpans();
+    installSimpleValueTokenSpans("type", "rymTypeToken");
+    installSimpleValueTokenSpans("language", "rymLanguageToken");
+    installSimpleValueTokenSpans("languages", "rymLanguageToken");
+  }
+
+  function restoreAllTokenSpans() {
+    restoreTokenSpans("[data-rym-descriptor-token]", "rymPickerDescriptorWrapped");
+    restoreTokenSpans("[data-rym-type-token]", "rymPickerTypeWrapped");
+    restoreTokenSpans("[data-rym-language-token]", "rymPickerLanguageWrapped");
+
+    document.querySelectorAll(".rym-picker-selected-target").forEach(element => {
+      element.classList.remove("rym-picker-selected-target");
+    });
+  }
+
+  function installSimpleValueTokenSpans(rowLabel, datasetName) {
+    const flag = rowLabel === "type" ? "rymPickerTypeWrapped" : "rymPickerLanguageWrapped";
+
+    for (const row of findRowsByLabel(rowLabel)) {
+      if (row.dataset[flag] === "1") continue;
+
+      const valueCell = getRowValueCell(row);
+      if (!valueCell) continue;
+
+      const value = cleanText(valueCell.textContent);
+      if (!value) continue;
+
+      valueCell.dataset.rymPickerOriginalHtml = valueCell.innerHTML;
+      valueCell.textContent = "";
+
+      if (datasetName === "rymLanguageToken") {
+        appendCommaSeparatedValueSpans(valueCell, value);
+      } else {
+        const type = typeFromText(value);
+        const span = document.createElement("span");
+        span.dataset.rymTypeToken = type ? type.slug : rymSlug(value);
+        span.textContent = value;
+        valueCell.appendChild(span);
+      }
+
+      row.dataset[flag] = "1";
+    }
+  }
+
+  function appendCommaSeparatedValueSpans(container, rawValue) {
+    const parts = String(rawValue || "").split(/(,\s*)/);
+
+    for (const part of parts) {
+      const token = /^,\s*$/.test(part) ? "" : cleanMetadataToken(part);
+
+      if (!token) {
+        container.appendChild(document.createTextNode(part));
+        continue;
+      }
+
+      const span = document.createElement("span");
+      span.dataset.rymLanguageToken = token;
+      span.textContent = part;
+      container.appendChild(span);
+    }
+  }
+
+  function installDescriptorTokenSpans() {
+    const containers = Array.from(document.querySelectorAll(".release_pri_descriptors"))
+      .filter(element => !element.closest("#rym-picker-panel"));
+
+    for (const container of containers) {
+      if (container.dataset.rymPickerDescriptorWrapped === "1") continue;
+
+      container.dataset.rymPickerOriginalHtml = container.innerHTML;
+
+      const parts = (container.textContent || "").split(/(,\s*)/);
+      const fragment = document.createDocumentFragment();
+
+      for (const part of parts) {
+        const token = /^,\s*$/.test(part) ? "" : cleanDescriptorToken(part);
+
+        if (!token || token.length > 70) {
+          fragment.appendChild(document.createTextNode(part));
+          continue;
+        }
+
+        const span = document.createElement("span");
+        span.dataset.rymDescriptorToken = token;
+        span.textContent = part;
+        fragment.appendChild(span);
+      }
+
+      container.textContent = "";
+      container.appendChild(fragment);
+      container.dataset.rymPickerDescriptorWrapped = "1";
+    }
+  }
+
+  function restoreTokenSpans(selector, rowFlagName) {
+    document.querySelectorAll(selector).forEach(span => {
+      const parent = span.parentElement;
+      if (parent && parent.dataset.rymPickerOriginalHtml !== undefined) {
+        parent.innerHTML = parent.dataset.rymPickerOriginalHtml;
+        delete parent.dataset.rymPickerOriginalHtml;
+      } else {
+        span.replaceWith(document.createTextNode(span.textContent || ""));
+      }
+    });
+
+    document.querySelectorAll(`[data-${camelToKebab(rowFlagName)}]`).forEach(row => {
+      delete row.dataset[rowFlagName];
+    });
+  }
+
+  function camelToKebab(value) {
+    return String(value).replace(/[A-Z]/g, match => "-" + match.toLowerCase());
+  }
+
+  function getRowValueCell(row) {
+    if (!row) return null;
+    if (row.matches("tr")) return row.querySelector("td");
+    const cells = Array.from(row.children || []);
+    return cells.find(child => !/^(th|dt)$/i.test(child.tagName)) || null;
+  }
+
+  function getRowValueText(row) {
+    const cell = getRowValueCell(row);
+    return cell ? cleanText(cell.textContent) : "";
+  }
+
+  // Release info lives in `.album_info tr`. Fall back to a wider scan only if
+  // RYM changes the markup.
+  function findRowsByLabel(label) {
+    const tableRows = Array.from(document.querySelectorAll(".album_info tr"))
+      .filter(row => findRowLabel(row) === label);
+    if (tableRows.length > 0) return tableRows;
+
+    const candidates = Array.from(document.querySelectorAll("tr, dl, dd"))
+      .filter(element => !element.closest("#rym-picker-panel") && findRowLabel(element) === label);
+
+    return candidates.filter(element =>
+      !candidates.some(other => other !== element && element.contains(other))
+    );
+  }
+
+  function findRowLabel(row) {
+    if (!row) return "";
+    const header = row.querySelector(":scope > th, :scope > dt");
+    return header ? normalizeRowLabel(header.textContent) : "";
+  }
+
+  function normalizeRowLabel(value) {
+    return cleanText(value).replace(/:$/, "").trim().toLowerCase();
+  }
+
+  function findInfoRow(target) {
+    const tableRow = target.closest("tr");
+    if (tableRow && findRowLabel(tableRow)) return tableRow;
+
+    let node = target;
+    for (let i = 0; i < 8 && node; i++) {
+      if (findRowLabel(node)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  document.addEventListener("click", function (event) {
+    if (PAGE !== "release" || !state.active) return;
+    if (event.target.closest("#rym-picker-panel")) return;
+
+    const picked = classifyClick(event.target);
+    if (!picked) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    applyPicked(picked);
+    render();
+    toast(`${picked.action}: ${picked.label || picked.value}`);
+  }, true);
+
+  document.addEventListener("mouseover", function (event) {
+    if (PAGE !== "release" || !state.active) return;
+    if (event.target.closest("#rym-picker-panel")) return;
+    if (classifyClick(event.target)) event.target.classList.add("rym-picker-active-outline");
+  });
+
+  document.addEventListener("mouseout", function (event) {
+    event.target.classList.remove("rym-picker-active-outline");
+  });
+
+  function classifyClick(target) {
+    const descriptorSpan = target.closest("[data-rym-descriptor-token]");
+    if (descriptorSpan) {
+      return { kind: "descriptor", value: descriptorSpan.dataset.rymDescriptorToken, action: "Toggled descriptor" };
+    }
+
+    const typeSpan = target.closest("[data-rym-type-token]");
+    if (typeSpan) {
+      const slug = typeSpan.dataset.rymTypeToken;
+      return { kind: "type", value: slug, label: typeLabel(slug), action: "Toggled type" };
+    }
+
+    const languageSpan = target.closest("[data-rym-language-token]");
+    if (languageSpan) {
+      return { kind: "language", value: languageSpan.dataset.rymLanguageToken, action: "Toggled language" };
+    }
+
+    const row = findInfoRow(target);
+    const rowLabel = findRowLabel(row);
+
+    // Recorded dates are historical metadata, not chart filters.
+    if (rowLabel === "recorded") return null;
+
+    const anchor = target.closest("a");
+    const href = anchor ? anchor.getAttribute("href") || "" : "";
+    const text = cleanText(target.textContent);
+
+    if (rowLabel === "released") {
+      const year = extractYear(text) || extractYear(getRowValueText(row));
+      if (year) return { kind: "year", value: year, action: "Year" };
+    }
+
+    if (href.includes("/genre/") && row && rowLabel === "genres") {
+      const value = cleanMetadataToken(text);
+      if (!value) return null;
+
+      const genreKind = target.closest(".release_sec_genres") ? "secondaryGenre" : "primaryGenre";
+
+      return {
+        kind: genreKind,
+        value,
+        slug: slugFromGenreHref(href),
+        action: genreKind === "primaryGenre" ? "Toggled primary genre" : "Toggled secondary genre"
+      };
+    }
+
+    return null;
+  }
+
+  function applyPicked(picked) {
+    switch (picked.kind) {
+      case "type":
+        toggleSetValue(state.types, picked.value);
+        break;
+      case "year":
+        state.year = cycleYear(state.year, picked.value);
+        break;
+      case "primaryGenre":
+        toggleSetValue(state.primaryGenres, picked.value);
+        state.secondaryGenres.delete(picked.value);
+        if (picked.slug) state.genreSlugs.set(picked.value, picked.slug);
+        break;
+      case "secondaryGenre":
+        toggleSetValue(state.secondaryGenres, picked.value);
+        state.primaryGenres.delete(picked.value);
+        if (picked.slug) state.genreSlugs.set(picked.value, picked.slug);
+        break;
+      case "descriptor":
+        toggleSetValue(state.descriptors, picked.value);
+        break;
+      case "language":
+        toggleSetValue(state.languages, picked.value);
+        break;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Misc
+  // ---------------------------------------------------------------------------
+
+  function toast(message) {
+    const old = document.querySelector(".rym-picker-toast");
+    if (old) old.remove();
+
+    const el = document.createElement("div");
+    el.className = "rym-picker-toast";
+    // Inline styles so the toast also works on the compat page, where no CSS is injected.
+    el.style.cssText = "position:fixed;right:24px;top:55px;background:#202020;border:1px solid #555;color:#d7d7d7;padding:8px 11px;border-radius:3px;z-index:9999999;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.35)";
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2200);
+  }
+
+  if (PAGE === "chart") {
+    state.bodyOpen = false;
+  }
+
+  render();
+})();
