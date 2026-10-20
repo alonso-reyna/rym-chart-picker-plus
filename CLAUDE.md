@@ -49,6 +49,16 @@ Cachéalos: cada uno costó una prueba en vivo y RYM los cambia sin avisar.
   Year e idiomas sin texto explicativo ("all time" como chip, "none"). La tabla Music releases imita el filtro nativo
   de RYM; `TYPE_PRESETS.albums`/`singles` están asumidos (album / single), no verificados contra RYM.
 
+## Semántica que no hay que romper (1.2.0)
+
+- `state.fromUrl` (modo chart): el URL se reproduce tal cual; los defaults de settings (tipo, idioma, usuarios) solo
+  aplican a estados nuevos de página de release. `state.urlUsers`: `null` = usar settings, `[]` = el URL no traía `u:`.
+- `selectCompatUsers`: top N cuenta usuarios distintos y no excluidos; `compatMinScore` es opcional (default 0) y el
+  flag `compatMinScoreV2` marca settings ya migrados (los viejos traían 70 y recortaban el top N).
+- El `@namespace` cambió a `alonso-reyna` en 1.1.2; una instalación vieja (`alonsoreyna`) convive como script aparte.
+- Revisión GPT 2026-10-20 pendiente de atender (bajo impacto): restaurar `innerHTML` al apagar Search pierde listeners
+  de RYM; no hay observer para cuando RYM re-renderiza una fila; `window.open` del fallback puede bloquearse como popup.
+
 ## Roadmap 1.2 (acordado, no empezado)
 
 Presets guardados · canasta persistente entre discos · exclusión con Shift+clic (`-slug`) · atajos de teclado ·

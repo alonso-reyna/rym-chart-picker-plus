@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.1.3
+// @version      1.2.0
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -17,6 +17,8 @@
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_addValueChangeListener
+// @noframes
 // @run-at       document-idle
 // @license      MIT
 // ==/UserScript==
@@ -327,7 +329,8 @@ se|Northern Sami|Davvisámegiella|
     highlightColor: "#ffb000",
     influencesAll: true,
     compatTopN: 10,
-    compatMinScore: 70,
+    compatMinScore: 0,
+    compatMinScoreV2: true,
     compatIncludeMe: false,
     compatExcluded: []
   };
@@ -384,7 +387,8 @@ se|Northern Sami|Davvisámegiella|
 
   function slugFromGenreHref(href) {
     const match = String(href || "").match(/\/genre\/([^/?#]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
+    if (!match) return null;
+    try { return decodeURIComponent(match[1]); } catch { return match[1]; }
   }
 
   function labelFromSlug(slug) {
@@ -436,7 +440,7 @@ se|Northern Sami|Davvisámegiella|
     if ((match = value.match(/^(\d{4})$/))) {
       return { mode: "year", from: Number(match[1]), to: Number(match[1]) };
     }
-    if ((match = value.match(/^(\d{4})s$/))) {
+    if ((match = value.match(/^(\d{3}0)s$/))) {
       const from = Number(match[1]);
       return { mode: "decade", from, to: from + 9 };
     }
@@ -458,8 +462,10 @@ se|Northern Sami|Davvisámegiella|
   }
 
   function rangeAround(year, span) {
-    const n = Math.max(0, Number(span) || 0);
-    return { mode: "range", from: year - n, to: year + n };
+    const y = parseInt(year, 10);
+    if (!Number.isFinite(y)) return emptyYear();
+    const n = Math.max(0, parseInt(span, 10) || 0);
+    return { mode: "range", from: y - n, to: y + n };
   }
 
   function createState() {
@@ -479,6 +485,8 @@ se|Northern Sami|Davvisámegiella|
       // RYM's "must contain all": written as a leading "all" token, e.g. s:all,cloud-rap,ambient-pop
       matchAll: { primary: false, secondary: false, descriptors: false },
       urlUsers: null,
+      // true when the state was parsed from a chart URL: stored defaults must not sneak in.
+      fromUrl: false,
       extraSegments: []
     };
   }
@@ -496,14 +504,12 @@ se|Northern Sami|Davvisámegiella|
       });
 
     if (parts[0] !== "charts") return { state, listing: null };
+    state.urlUsers = [];
 
     const listing = LISTING_OPTIONS.some(([value]) => value === parts[1]) ? parts[1] : null;
 
-    const typeSegment = parts[2] || "";
-    const typeSlugs = typeSegment.split(",").filter(slug => TYPE_BY_ALIAS.has(slug));
-    if (typeSlugs.length > 0 && typeSegment !== ALL_TYPE_SEGMENT) {
-      typeSlugs.forEach(slug => state.types.add(slug));
-    }
+    state.fromUrl = true;
+    canonicalTypeSlugs((parts[2] || "").split(",")).forEach(slug => state.types.add(slug));
 
     state.year = parseYearSegment(parts[3]);
 
@@ -528,17 +534,28 @@ se|Northern Sami|Davvisámegiella|
           state.genreSlugs.set(display, slug);
         }
       } else if (prefix === "d") {
-        items.forEach(slug => state.descriptors.add(labelFromSlugKeepCase(slug)));
+        items.forEach(slug => state.descriptors.add(
+          slug.startsWith("-") ? "-" + labelFromSlugKeepCase(slug.slice(1)) : labelFromSlugKeepCase(slug)
+        ));
       } else if (prefix === "l") {
         items.forEach(code => state.languages.add(code));
       } else if (prefix === "u") {
         state.urlUsers = items;
       } else {
-        state.extraSegments.push(part);
+        state.extraSegments.push(encodeURIComponent(part).replace(/%3A/gi, ":").replace(/%2C/gi, ","));
       }
     }
 
     return { state, listing };
+  }
+
+  function canonicalTypeSlugs(values) {
+    const out = [];
+    for (const value of Array.isArray(values) ? values : []) {
+      const type = TYPE_BY_ALIAS.get(String(value || "").trim().toLowerCase());
+      if (type && !out.includes(type.slug)) out.push(type.slug);
+    }
+    return out;
   }
 
   function labelFromSlugKeepCase(slug) {
@@ -571,10 +588,10 @@ se|Northern Sami|Davvisámegiella|
 
   function buildTypeSegment(state, settings, pageTypeSlug) {
     if (state.types.size > 0) return Array.from(state.types).join(",");
-    if (settings.defaultTypeMode === "all") return ALL_TYPE_SEGMENT;
+    if (state.fromUrl || settings.defaultTypeMode === "all") return ALL_TYPE_SEGMENT;
 
     if (settings.defaultTypeMode === "custom") {
-      const valid = settings.defaultTypeCustom.filter(slug => TYPE_BY_ALIAS.has(slug));
+      const valid = canonicalTypeSlugs(settings.defaultTypeCustom);
       if (valid.length > 0) return valid.join(",");
     }
 
@@ -586,7 +603,7 @@ se|Northern Sami|Davvisámegiella|
       return "l:" + Array.from(state.languages).map(languageCode).join(",");
     }
 
-    if (settings.defaultLanguageMode === "custom" && settings.defaultLanguageCustom.length > 0) {
+    if (!state.fromUrl && settings.defaultLanguageMode === "custom" && settings.defaultLanguageCustom.length > 0) {
       const valid = settings.defaultLanguageCustom.filter(code => LANGUAGE_BY_CODE.has(code));
       return valid.length > 0 ? "l:" + valid.join(",") : "";
     }
@@ -595,21 +612,41 @@ se|Northern Sami|Davvisámegiella|
   }
 
   // Compatible users after Top N, minimum score and manual exclusions.
+  // Top N distinct, non-excluded users; the (optional) minimum relative score is applied first.
   function selectCompatUsers(compat, settings) {
-    const users = (compat && Array.isArray(compat.users)) ? compat.users : [];
-    const excluded = new Set((settings.compatExcluded || []).map(name => name.toLowerCase()));
+    const users = sanitizeCompatUsers(compat && compat.users);
+    const excluded = new Set((settings.compatExcluded || []).map(name => String(name).toLowerCase()));
     const minScore = Number(settings.compatMinScore) || 0;
     const topN = Math.max(1, Number(settings.compatTopN) || 10);
+    const seen = new Set();
+    const picked = [];
 
+    for (const user of users) {
+      const key = user.username.toLowerCase();
+      if (user.score < minScore || excluded.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      picked.push(user);
+      if (picked.length >= topN) break;
+    }
+    return picked;
+  }
+
+  function sanitizeCompatUsers(users) {
+    if (!Array.isArray(users)) return [];
     return users
-      .filter(user => user.score >= minScore)
-      .slice(0, topN)
-      .filter(user => !excluded.has(user.username.toLowerCase()));
+      .filter(user => user && typeof user === "object" && typeof user.username === "string" && user.username.trim())
+      .map(user => ({
+        username: cleanUsername(user.username),
+        score: Number.isFinite(Number(user.score)) ? Number(user.score) : 0,
+        rank: Number.isFinite(Number(user.rank)) ? Number(user.rank) : 0
+      }))
+      .filter(user => user.username);
   }
 
   function buildUserSegment(state, settings, context) {
-    if (state.urlUsers && state.urlUsers.length > 0) {
-      return "u:" + state.urlUsers.join(",");
+    // null = not from a URL (use settings); [] = the chart URL has no user filter; [...] = reuse it.
+    if (Array.isArray(state.urlUsers)) {
+      return state.urlUsers.length > 0 ? "u:" + state.urlUsers.join(",") : "";
     }
 
     const filters = settings.userFilters || ["all"];
@@ -630,7 +667,13 @@ se|Northern Sami|Davvisámegiella|
       parts.push(...names);
     }
 
-    const unique = Array.from(new Set(parts));
+    const seen = new Set();
+    const unique = parts.filter(part => {
+      const key = part.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return unique.length > 0 ? "u:" + unique.join(",") : "";
   }
 
@@ -770,28 +813,44 @@ se|Northern Sami|Davvisámegiella|
       .replace(/"/g, "&quot;");
   }
 
-  function normalizeSettings(parsed) {
-    const defaults = { ...DEFAULT_SETTINGS };
-    if (!parsed || typeof parsed !== "object") return defaults;
+  const USER_FILTER_VALUES = ["all", "following", "followers", "myself", "other", "compat"];
 
+  function cloneDefaultSettings() {
+    const out = { ...DEFAULT_SETTINGS };
+    for (const key of Object.keys(out)) if (Array.isArray(out[key])) out[key] = out[key].slice();
+    return out;
+  }
+
+  function normalizeSettings(parsed) {
+    const defaults = cloneDefaultSettings();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaults;
+
+    const isPrimitive = v => v === null || ["string", "number", "boolean"].includes(typeof v);
     const pick = (key, allowed) => allowed.includes(parsed[key]) ? parsed[key] : defaults[key];
-    const arrayOf = key => Array.isArray(parsed[key]) ? parsed[key].filter(v => typeof v === "string") : defaults[key];
+    const arrayOf = key => Array.isArray(parsed[key]) ? parsed[key].filter(v => typeof v === "string") : defaults[key].slice();
     const intIn = (key, min, max) => {
-      const n = parseInt(parsed[key], 10);
+      const n = isPrimitive(parsed[key]) ? parseInt(parsed[key], 10) : NaN;
       return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defaults[key];
     };
+    const str = key => (typeof parsed[key] === "string" ? parsed[key] : "");
+
+    let userFilters = Array.from(new Set(arrayOf("userFilters").filter(v => USER_FILTER_VALUES.includes(v))));
+    if (userFilters.length > 1) userFilters = userFilters.filter(v => v !== "all");
+    if (userFilters.length === 0) userFilters = ["all"];
+
+    // 1.2.0: the relative score cut used to hide most of "top N"; reset it once for old settings.
+    const minScoreMigrated = parsed.compatMinScoreV2 === true;
 
     return {
       ...defaults,
-      ...parsed,
       listingMode: pick("listingMode", LISTING_OPTIONS.map(([value]) => value)),
       defaultTypeMode: pick("defaultTypeMode", ["all", "page", "custom"]),
-      defaultTypeCustom: arrayOf("defaultTypeCustom").filter(slug => TYPE_BY_ALIAS.has(slug)),
-      userFilters: arrayOf("userFilters").length > 0 ? arrayOf("userFilters") : ["all"],
-      otherUsername: cleanUsername(parsed.otherUsername),
-      ownUsername: cleanUsername(parsed.ownUsername),
+      defaultTypeCustom: canonicalTypeSlugs(arrayOf("defaultTypeCustom")),
+      userFilters,
+      otherUsername: cleanUsername(str("otherUsername")),
+      ownUsername: cleanUsername(str("ownUsername")),
       defaultLanguageMode: pick("defaultLanguageMode", ["all", "custom"]),
-      defaultLanguageCustom: arrayOf("defaultLanguageCustom"),
+      defaultLanguageCustom: arrayOf("defaultLanguageCustom").filter(code => LANGUAGE_BY_CODE.has(code)),
       theme: pick("theme", ["auto", "night", "evening", "light"]),
       placementMode: pick("placementMode", ["page", "screen"]),
       screenPosition: pick("screenPosition", ["top-right", "bottom-right", "top-left", "bottom-left"]),
@@ -799,7 +858,8 @@ se|Northern Sami|Davvisámegiella|
       highlightColor: isValidHex(parsed.highlightColor) ? parsed.highlightColor : defaults.highlightColor,
       influencesAll: parsed.influencesAll !== false,
       compatTopN: intIn("compatTopN", 1, 100),
-      compatMinScore: intIn("compatMinScore", 0, 100),
+      compatMinScore: minScoreMigrated ? intIn("compatMinScore", 0, 100) : 0,
+      compatMinScoreV2: true,
       compatIncludeMe: parsed.compatIncludeMe === true,
       compatExcluded: arrayOf("compatExcluded")
     };
@@ -808,7 +868,7 @@ se|Northern Sami|Davvisámegiella|
   const PURE_API = {
     rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
-    createState, parseChartPath, buildChartUrl, selectCompatUsers,
+    createState, parseChartPath, buildChartUrl, selectCompatUsers, sanitizeCompatUsers, canonicalTypeSlugs,
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
     ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS
   };
@@ -830,6 +890,11 @@ se|Northern Sami|Davvisámegiella|
 
   if (!PAGE) return;
 
+  if (document.getElementById("rym-picker-panel")) {
+    console.warn("[RYM Chart Picker+] Another chart picker is already running on this page; disable one of them.");
+    return;
+  }
+
   const settings = loadSettings();
   let compat = loadCompat();
 
@@ -846,13 +911,17 @@ se|Northern Sami|Davvisámegiella|
     state.matchAll.secondary = settings.influencesAll;
   }
 
+  function readStored(key) {
+    const raw = GM_getValue(key, "");
+    if (!raw) return null;
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  }
+
   function loadSettings() {
     try {
-      const raw = GM_getValue(STORAGE_KEY, "");
-      if (!raw) return { ...DEFAULT_SETTINGS };
-      return normalizeSettings(JSON.parse(raw));
+      return normalizeSettings(readStored(STORAGE_KEY));
     } catch {
-      return { ...DEFAULT_SETTINGS };
+      return normalizeSettings(null);
     }
   }
 
@@ -862,11 +931,15 @@ se|Northern Sami|Davvisámegiella|
 
   function loadCompat() {
     try {
-      const raw = GM_getValue(COMPAT_KEY, "");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.users)) return null;
-      return parsed;
+      const parsed = readStored(COMPAT_KEY);
+      if (!parsed || typeof parsed !== "object") return null;
+      const users = sanitizeCompatUsers(parsed.users);
+      if (users.length === 0) return null;
+      const forUser = cleanUsername(parsed.forUser);
+      const me = getOwnUsername();
+      // A list synced under another account is not ours.
+      if (me && forUser && me.toLowerCase() !== forUser.toLowerCase()) return null;
+      return { users, forUser, syncedAt: Number(parsed.syncedAt) || 0 };
     } catch {
       return null;
     }
@@ -1102,6 +1175,7 @@ se|Northern Sami|Davvisámegiella|
     .rym-picker-type-presets button.rym-picker-preset-on { color: var(--rym-blue-hover); font-weight: 700; }
     .rym-picker-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
     .rym-picker-type-cell {
+      font-family: inherit; margin: 0; width: 100%; box-sizing: border-box;
       padding: 7px 1px; border: 1px solid var(--rym-border-2); border-radius: 3px; background: var(--rym-bg-2);
       color: var(--rym-text); text-align: center; font-size: 11px; line-height: 1.2; cursor: pointer; user-select: none;
       display: flex; align-items: center; justify-content: center; word-break: break-word;
@@ -1252,7 +1326,7 @@ se|Northern Sami|Davvisámegiella|
           <button type="button" data-type-preset="main" title="Album, EP, Mixtape, DJ Mix">main</button><span>|</span>
           <button type="button" data-type-preset="albums" title="Albums only">albums</button><span>|</span>
           <button type="button" data-type-preset="singles" title="Singles only">singles</button><span>|</span>
-          <button type="button" data-type-preset="clear" title="Back to the default (the type of this page)">clear</button>
+          <button type="button" data-type-preset="clear">clear</button>
         </div>
         <div id="rym-picker-types" class="rym-picker-type-grid"></div>
         <div id="rym-picker-types-note" class="rym-picker-small-note"></div>
@@ -1639,6 +1713,7 @@ se|Northern Sami|Davvisámegiella|
       if (value === "all") {
         if (!input.checked) {
           input.checked = true;
+          render();
           return;
         }
         settings.userFilters = ["all"];
@@ -1754,8 +1829,11 @@ se|Northern Sami|Davvisámegiella|
 
     const pageUrl = `/find_similar_users?user=${encodeURIComponent(OWN_USERNAME)}`;
 
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 20000);
+
     try {
-      const response = await fetch(pageUrl, { credentials: "include" });
+      const response = await fetch(pageUrl, { credentials: "include", signal: abort.signal });
       const html = await response.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
       const users = parseCompatDocument(doc);
@@ -1774,9 +1852,20 @@ se|Northern Sami|Davvisámegiella|
         window.open(pageUrl, "_blank", "noopener,noreferrer");
       }
     } finally {
+      clearTimeout(timer);
       compatSyncing = false;
       render();
     }
+  }
+
+  // The fallback tab (find_similar_users) saves the list; pick it up here without refetching.
+  if (typeof GM_addValueChangeListener === "function") {
+    GM_addValueChangeListener(COMPAT_KEY, (name, oldValue, newValue, remote) => {
+      if (!remote) return;
+      compat = loadCompat();
+      if (compat) toast(`Compatible users list updated (${compat.users.length}).`);
+      render();
+    });
   }
 
   function compatIsStale() {
@@ -1938,10 +2027,12 @@ se|Northern Sami|Davvisámegiella|
 
     for (const row of TYPE_GRID) {
       for (const slug of row) {
-        const cell = document.createElement("span");
+        const cell = document.createElement("button");
+        cell.type = "button";
         cell.className = "rym-picker-type-cell";
         if (row.length < 4) cell.classList.add("rym-picker-type-wide");
         cell.classList.toggle("rym-picker-type-on", selected.has(slug));
+        cell.setAttribute("aria-pressed", selected.has(slug) ? "true" : "false");
         cell.textContent = slug === "unauth" ? "Unauthorized" : slug === "additional" ? "Addl release" : typeLabel(slug);
         cell.title = selected.has(slug) ? "Click to remove" : "Click to add";
         cell.addEventListener("click", () => {
@@ -1960,6 +2051,8 @@ se|Northern Sami|Davvisámegiella|
     });
 
     $("rym-picker-types-note").textContent = custom ? "" : `default: ${getDefaultTypeLabel()}`;
+    const clearButton = document.querySelector('[data-type-preset="clear"]');
+    if (clearButton) clearButton.title = `Back to the default: ${getDefaultTypeLabel()}`;
   }
 
   function renderUsersChip() {
@@ -1979,9 +2072,14 @@ se|Northern Sami|Davvisámegiella|
       if (target) target.scrollIntoView({ block: "nearest" });
     });
 
-    if (state.urlUsers && state.urlUsers.length > 0) {
-      chip.className += " rym-picker-chip-accent";
-      chip.innerHTML = `from URL<span class="rym-picker-chip-sub">${state.urlUsers.length} user${state.urlUsers.length === 1 ? "" : "s"}</span>`;
+    if (Array.isArray(state.urlUsers)) {
+      if (state.urlUsers.length > 0) {
+        chip.className += " rym-picker-chip-accent";
+        chip.innerHTML = `from URL<span class="rym-picker-chip-sub">${state.urlUsers.length} user${state.urlUsers.length === 1 ? "" : "s"}</span>`;
+      } else {
+        chip.innerHTML = `everyone<span class="rym-picker-chip-sub">from URL</span>`;
+      }
+      chip.title = "Click to pick a user filter instead";
       el.appendChild(chip);
       return;
     }
@@ -2284,7 +2382,7 @@ se|Northern Sami|Davvisámegiella|
     if (settings.defaultTypeMode === "custom" && settings.defaultTypeCustom.length > 0) {
       return settings.defaultTypeCustom.map(typeLabel).join(", ");
     }
-    if (PAGE === "chart") return "All release types";
+    if (PAGE === "chart" || state.fromUrl) return "All release types";
     const pageType = getCurrentPageTypeSlug();
     return pageType ? `Same as release page (${typeLabel(pageType)})` : "Same as release page";
   }
@@ -2371,8 +2469,8 @@ se|Northern Sami|Davvisámegiella|
     restoreTokenSpans("[data-rym-type-token]", "rymPickerTypeWrapped");
     restoreTokenSpans("[data-rym-language-token]", "rymPickerLanguageWrapped");
 
-    document.querySelectorAll(".rym-picker-selected-target").forEach(element => {
-      element.classList.remove("rym-picker-selected-target");
+    document.querySelectorAll(".rym-picker-selected-target, .rym-picker-active-outline").forEach(element => {
+      element.classList.remove("rym-picker-selected-target", "rym-picker-active-outline");
     });
   }
 
@@ -2566,6 +2664,9 @@ se|Northern Sami|Davvisámegiella|
     if (languageSpan) {
       return { kind: "language", value: languageSpan.dataset.rymLanguageToken, action: "Toggled language" };
     }
+
+    // Never hijack RYM's own controls.
+    if (target.closest("button, input, select, textarea, [contenteditable='true']")) return null;
 
     const row = findInfoRow(target);
     const rowLabel = findRowLabel(row);

@@ -1,4 +1,4 @@
-# RYM Chart Picker+ (1.1.3)
+# RYM Chart Picker+ (1.2.0)
 
 Fork de [RYM Music Chart Picker](https://github.com/Lin-808/rym-music-chart-picker) de Lin808.
 Usa la misma clave de settings, así que al reemplazar el script original no pierdes tu configuración.
@@ -27,10 +27,11 @@ Para desarrollar en local: abre `file:///<ruta a esta carpeta>/rym-chart-picker-
 - **Año**: clic cicla año → década → all time.
 - **Music releases**: tabla de tipos como la nativa de RYM (all / main / albums / singles / clear), default = tipo de la página.
 - **Must contain all** por fila (géneros, influencias, descriptores); influencias encendido por default.
-- **Usuarios compatibles**: toggle + top N en el panel principal; sync de `find_similar_users`; score mínimo,
-  exclusiones e "incluirme" en settings.
-- **Modo chart**: en `/charts/*` el panel carga el URL actual y "Update chart" lo reemplaza en la misma pestaña
-  (Shift+clic = pestaña nueva).
+- **Usuarios compatibles**: toggle + top N en el panel principal (top N = N usuarios distintos, de verdad); sync de
+  `find_similar_users` que también se recoge desde la pestaña de respaldo; score mínimo opcional (apagado por
+  default), exclusiones e "incluirme" en settings.
+- **Modo chart**: en `/charts/*` el panel carga el URL actual tal cual (sin colar defaults de settings) y "Update chart"
+  lo reemplaza en la misma pestaña (Shift+clic = pestaña nueva).
 - Preview del URL al pie del panel (clic selecciona todo).
 
 ## Pruebas

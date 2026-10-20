@@ -95,6 +95,8 @@ Listing (**Top / Popular / Esoteric / Diverse**) se elige en ⚙ y se recuerda.
 
 - **Default release type when none is selected**: "Same as release page" (default) usa el tipo del disco.
   Pon "All release types" si quieres que EPs y singles entren siempre.
+- **Minimum compatibility score**: apagado (0) por default. Si lo subes, recorta la lista *antes* del top N, así que
+  "top 50" puede darte menos de 50.
 - **Your username**: se detecta solo del header. Si dice "Not detected", escríbelo aquí y recarga.
 - **Panel behavior**: "Stay visible while scrolling" si prefieres el panel fijo.
 

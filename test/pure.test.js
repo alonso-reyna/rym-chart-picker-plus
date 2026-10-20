@@ -50,12 +50,19 @@ assert.equal(api.buildChartUrl(s, settings, ctx),
   "https://rateyourmusic.com/charts/top/album/2019/g:alternative-randb/d:androgynous-vocals/s:art-pop/");
 
 // compat users
-assert.deepEqual(api.selectCompatUsers(compat, settings).map(u => u.username), ["bnsaiboy", "Kai7", "AmazingNutzo"]);
+assert.deepEqual(api.selectCompatUsers(compat, settings).map(u => u.username), ["bnsaiboy", "Kai7", "AmazingNutzo", "Low"]);
+assert.deepEqual(api.selectCompatUsers(compat, { ...settings, compatMinScore: 70 }).map(u => u.username), ["bnsaiboy", "Kai7", "AmazingNutzo"]);
+// top N counts distinct, non-excluded users; exclusions and duplicates do not eat the quota
+assert.deepEqual(api.selectCompatUsers({ users: [{ username: "Alice", score: 100 }, { username: "alice", score: 99 }, { username: "Bob", score: 98 }, { username: "Cy", score: 97 }] },
+  { ...settings, compatTopN: 2, compatExcluded: ["bob"] }).map(u => u.username), ["Alice", "Cy"]);
+assert.deepEqual(api.selectCompatUsers({ users: [null, { username: null, score: 100 }, { username: "ok", score: "88" }] }, settings).map(u => [u.username, u.score]), [["ok", 88]]);
 assert.deepEqual(api.selectCompatUsers(compat, { ...settings, compatTopN: 2 }).map(u => u.username), ["bnsaiboy", "Kai7"]);
-assert.deepEqual(api.selectCompatUsers(compat, { ...settings, compatExcluded: ["kai7"] }).map(u => u.username), ["bnsaiboy", "AmazingNutzo"]);
-assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters: ["compat"] }, ctx), "u:bnsaiboy,Kai7,AmazingNutzo");
-assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters: ["compat", "following"], compatIncludeMe: true }, ctx),
+assert.deepEqual(api.selectCompatUsers(compat, { ...settings, compatExcluded: ["kai7"] }).map(u => u.username), ["bnsaiboy", "AmazingNutzo", "Low"]);
+assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters: ["compat"], compatTopN: 3 }, ctx), "u:bnsaiboy,Kai7,AmazingNutzo");
+assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters: ["compat", "following"], compatTopN: 3, compatIncludeMe: true }, ctx),
   "u:followed_by:alonsoreyna,alonsoreyna,bnsaiboy,Kai7,AmazingNutzo");
+// case-insensitive dedupe across sources
+assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters: ["compat", "myself"], compatTopN: 1 }, { ...ctx, ownUsername: "BNSAIBOY" }), "u:BNSAIBOY");
 assert.equal(api.buildUserSegment(api.createState(), settings, ctx), "");
 
 // parse chart path and rebuild
@@ -77,13 +84,36 @@ assert.equal(api.buildChartUrl(m, settings, { ...ctx, pageTypeSlug: "" }),
 const m2 = api.createState(); m2.secondaryGenres.add("Cloud Rap"); m2.matchAll.secondary = true; m2.descriptors.add("cold"); m2.matchAll.descriptors = true;
 assert.equal(api.buildChartUrl(m2, settings, ctx), "https://rateyourmusic.com/charts/top/album/all-time/d:all,cold/s:all,cloud-rap/");
 
-// all-types chart keeps "all" default
+// a chart URL is reproduced as-is: explicit "all types" and absent l:/u: survive stored defaults
 const all = api.parseChartPath("/charts/top/" + api.ALL_TYPE_SEGMENT + "/all-time/").state;
-assert.equal(all.types.size, 0);
+assert.equal(all.types.size, api.ALL_TYPE_SEGMENT.split(",").length);
+const sneaky = { ...settings, defaultTypeMode: "custom", defaultTypeCustom: ["single"], defaultLanguageMode: "custom", defaultLanguageCustom: ["ja"], userFilters: ["myself"] };
+assert.equal(api.buildChartUrl(all, sneaky, ctx), "https://rateyourmusic.com/charts/top/" + api.ALL_TYPE_SEGMENT + "/all-time/");
+const plain = api.parseChartPath("/charts/top/album/2010-2015/g:indie-folk/").state;
+assert.equal(api.buildChartUrl(plain, sneaky, ctx), "https://rateyourmusic.com/charts/top/album/2010-2015/g:indie-folk/");
+// but a fresh release-page state does use the defaults
+assert.equal(api.buildChartUrl(api.createState(), sneaky, ctx), "https://rateyourmusic.com/charts/top/single/all-time/l:ja/u:alonsoreyna/");
+// aliases in the URL are canonicalized; excluded descriptors keep their sign
+assert.deepEqual([...api.parseChartPath("/charts/top/compilation,ep/all-time/").state.types], ["comp", "ep"]);
+assert.match(api.buildChartUrl(api.parseChartPath("/charts/top/album/all-time/d:-live/").state, settings, ctx), /\/d:-live\//);
+assert.deepEqual(api.canonicalTypeSlugs(["Compilation", "comp", "nope", "DJ Mix"]), ["comp", "djmix"]);
 
 // settings normalization
 const n = api.normalizeSettings({ theme: "weird", compatTopN: "999", userFilters: [], highlightColor: "red" });
 assert.equal(n.theme, "night"); assert.equal(n.compatTopN, 100); assert.deepEqual(n.userFilters, ["all"]); assert.equal(n.highlightColor, "#ffb000");
+assert.notStrictEqual(api.normalizeSettings({}).userFilters, api.DEFAULT_SETTINGS.userFilters);
+assert.deepEqual(api.normalizeSettings({ userFilters: ["all", "compat", "compat", "bogus"] }).userFilters, ["compat"]);
+assert.deepEqual(api.normalizeSettings({ defaultTypeCustom: ["compilation"] }).defaultTypeCustom, ["comp"]);
+assert.deepEqual(api.normalizeSettings({ defaultLanguageCustom: ["ja", "klingon"] }).defaultLanguageCustom, ["ja"]);
+assert.doesNotThrow(() => api.normalizeSettings(JSON.parse('{"compatTopN":{"toString":null},"ownUsername":{}}')));
+// old settings (pre 1.2.0) had minScore 70 cutting "top N"; it is reset once, then respected
+assert.equal(api.normalizeSettings({ compatMinScore: 70 }).compatMinScore, 0);
+assert.equal(api.normalizeSettings({ compatMinScore: 70, compatMinScoreV2: true }).compatMinScore, 70);
+// year edge cases
+assert.equal(api.parseYearSegment("2015s").mode, "none");
+assert.equal(api.yearSegment(api.parseYearSegment("2010s")), "2010s");
+assert.equal(api.yearSegment(api.rangeAround("2000", 2)), "1998-2002");
+assert.equal(api.slugFromGenreHref("/genre/foo%/"), "foo%");
 
 // language
 assert.equal(api.languageCode("English"), "en");
