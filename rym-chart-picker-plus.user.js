@@ -865,12 +865,78 @@ se|Northern Sami|Davvisámegiella|
     };
   }
 
+  // ---- Lists: classification and scoring (pure) ----
+  const LIST_LOG_CATEGORIES = new Set([
+    "Listener's Diary", "Gamer's Diary", "Viewer's Diary", "My Life on RYM", "Autobiographical",
+    "Wishlists", "Shopping List", "Upcoming", "User Stats", "Favorite Users or Friends",
+    "RYM Users in Real Life", "Fans Of…", "Fans Of...", "Fans Of", "Users"
+  ].map(name => cleanText(name).toLowerCase()));
+
+  const LIST_OTHER_CATEGORIES = new Set([
+    "Galleries", "Artist Galleries", "Cover Art Themes",
+    "Animals", "Architecture & Edifices", "Business & Finance", "Clothing & Accessories", "Colors",
+    "Culture & Ethnicity", "Drugs & Alcohol", "Fine Arts", "Food & Drink", "Graphic Design",
+    "Health & Medicine", "History", "Housewares", "Media & Communication", "People", "Men", "Women",
+    "Plants", "Religion & Mythology", "Science & Nature", "Spoofs & Similarities", "Sports & Games",
+    "Symbols", "The Human Body", "Transportation", "Travel & Geography",
+    "Release Attributes", "Release Titles", "Cover Song Versions", "Music Videos", "Humor",
+    "Lists of Lists", "Projects", "Miscellaneous", "Reviews", "Front Page Reviews", "Radio", "Memoriam",
+    "Lost Media", "Other Databases", "Subculture", "Fandom", "Television", "Anime", "Videos", "Books",
+    "Comics", "Magazines", "Awards", "Games", "Free and Legal", "Films", "Video Games", "RYM", "RYM25"
+  ].map(name => cleanText(name).toLowerCase()));
+
+  function classifyListCategories(categories, likes) {
+    const names = (Array.isArray(categories) ? categories : [])
+      .map(name => cleanText(name).toLowerCase()).filter(Boolean);
+    if (names.some(name => LIST_LOG_CATEGORIES.has(name))) return "log";
+    if (names.some(name => LIST_OTHER_CATEGORIES.has(name))) return "other";
+    if (names.length) return "curated";
+    if (typeof likes !== "number" || Number.isNaN(likes)) return "unknown";
+    return likes >= 3 ? "curated" : "other";
+  }
+
+  const LIST_LOG_TITLE_PATTERNS = [
+    /log/i, /diary/i, /journal/i, /listening/i, /listened/i, /first listens?/i, /\b20\d\d\s*:/,
+    /^\W*$/, /w\.?i\.?p/i, /to listen/i, /backlog/i
+  ];
+
+  function classifyListTitle(title) {
+    const text = String(title == null ? "" : title);
+    return LIST_LOG_TITLE_PATTERNS.some(re => re.test(text)) ? "log" : "unknown";
+  }
+
+  function classifyList(entry) {
+    const e = entry || {};
+    if (e.override) return { cls: e.override, provisional: false };
+    if (e.fetchedAt) {
+      return { cls: classifyListCategories(e.categories, e.likes == null ? null : e.likes), provisional: false };
+    }
+    const cls = classifyListTitle(e.title);
+    return { cls, provisional: cls === "log" };
+  }
+
+  function scoreList(entry, ctx) {
+    const compat = ctx.compatUsers.has(String(entry.author || "").toLowerCase());
+    const starred = ctx.starred.has(entry.key);
+    return Math.log10((entry.likes || 0) + 1) * 10 + (compat ? 5 : 0) + (starred ? 100 : 0);
+  }
+
+  function sortListsByScore(entries, ctx) {
+    return entries.map(entry => ({ entry, score: scoreList(entry, ctx) })).sort((a, b) =>
+      b.score - a.score ||
+      (b.entry.likes || 0) - (a.entry.likes || 0) ||
+      String(a.entry.title || "").localeCompare(String(b.entry.title || ""))
+    ).map(item => item.entry);
+  }
+
   const PURE_API = {
     rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
     createState, parseChartPath, buildChartUrl, selectCompatUsers, sanitizeCompatUsers, canonicalTypeSlugs,
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
-    ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS
+    ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS,
+    LIST_LOG_CATEGORIES, LIST_OTHER_CATEGORIES, classifyListCategories, classifyListTitle,
+    classifyList, scoreList, sortListsByScore
   };
 
   if (typeof module !== "undefined" && module.exports) {

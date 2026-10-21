@@ -125,4 +125,31 @@ assert.deepEqual(api.TYPE_PRESETS.main, ["album", "ep", "mixtape", "djmix"]);
 assert.equal(api.TYPE_PRESETS.all.join(","), api.ALL_TYPE_SEGMENT);
 for (const slug of Object.values(api.TYPE_PRESETS).flat()) assert.ok(api.typeFromText(slug), slug);
 
+// lists: classification
+assert.equal(api.classifyListCategories(["Listener's Diary"], 1), "log");
+assert.equal(api.classifyListCategories(["Best Of", "Listener's Diary"], 50), "log");
+assert.equal(api.classifyListCategories(["Cover Art Themes"], 9), "other");
+assert.equal(api.classifyListCategories(["Shoegaze"], 0), "curated");
+assert.equal(api.classifyListCategories(["1994"], 0), "curated");
+assert.equal(api.classifyListCategories([], 3), "curated");
+assert.equal(api.classifyListCategories([], 2), "other");
+assert.equal(api.classifyListCategories([], null), "unknown");
+assert.equal(api.classifyListTitle("listening log 2026"), "log");
+assert.equal(api.classifyListTitle("2024 : LOG"), "log");
+assert.equal(api.classifyListTitle("*"), "log");
+assert.equal(api.classifyListTitle("covers i do like \u{1F604} (w.i.p.)"), "log");
+assert.equal(api.classifyListTitle("Ranking EPs of 2024"), "unknown");
+assert.deepEqual(api.classifyList({ title: "listening log 2026" }), { cls: "log", provisional: true });
+assert.deepEqual(api.classifyList({ title: "Ranking EPs of 2024" }), { cls: "unknown", provisional: false });
+assert.deepEqual(api.classifyList({ title: "listening log 2026", categories: ["Best Of"], likes: 4, fetchedAt: 1 }), { cls: "curated", provisional: false });
+assert.deepEqual(api.classifyList({ title: "x", categories: ["Best Of"], likes: 4, fetchedAt: 1, override: "log" }), { cls: "log", provisional: false });
+// lists: scoring
+const listCtx = { compatUsers: new Set(["aaronnotaaron"]), starred: new Set(["/list/zoeysaxon/releases-of-2024-ranked/"]) };
+const l1 = { key: "/list/troutmask/canon/", title: "Canon", author: "troutmask", likes: 212 };
+const l2 = { key: "/list/aaronnotaaron/eps/", title: "Ranking EPs of 2024", author: "AaronnotAaron", likes: 9 };
+const l3 = { key: "/list/zoeysaxon/releases-of-2024-ranked/", title: "Releases of 2024 Ranked", author: "zoeysaxon", likes: 3 };
+assert.ok(api.scoreList(l1, listCtx) > api.scoreList(l2, listCtx));
+assert.ok(api.scoreList(l3, listCtx) > api.scoreList(l1, listCtx));
+assert.deepEqual(api.sortListsByScore([l1, l2, l3], listCtx).map(l => l.key), [l3.key, l1.key, l2.key]);
+
 console.log("all tests passed");
