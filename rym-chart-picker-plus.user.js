@@ -1007,7 +1007,9 @@ se|Northern Sami|Davvisámegiella|
     };
   }
 
+  // null = not a user-lists page (no table.mbgen: blocked/unparsable); [] = page OK but the user has no lists.
   function parseUserListsDocument(doc) {
+    if (!doc.querySelector("table.mbgen")) return null;
     const out = [];
     for (const a of doc.querySelectorAll("a.listpage_list")) {
       const href = a.getAttribute("href");
@@ -1360,8 +1362,10 @@ se|Northern Sami|Davvisámegiella|
 
   const COMPAT_LISTS_MAX_USERS = 10;
 
+  const COMPAT_LISTS_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
   function isCompatListsFresh(entry, now) {
-    return !!entry && Number.isFinite(entry.fetchedAt) && (now - entry.fetchedAt) <= LIST_CACHE_MAX_AGE_MS;
+    return !!entry && Number.isFinite(entry.fetchedAt) && (now - entry.fetchedAt) <= COMPAT_LISTS_MAX_AGE_MS;
   }
 
   function storeUserLists(username, lists) {
@@ -1375,7 +1379,7 @@ se|Northern Sami|Davvisámegiella|
     if (!m) return;
     const username = decodeURIComponent(m[1]).toLowerCase();
     const lists = parseUserListsDocument(document);
-    if (lists.length === 0) return;
+    if (!lists) return;
     storeUserLists(username, lists);
     toast(`Saved ${lists.length} lists by ${username}.`);
   }
@@ -1418,7 +1422,7 @@ se|Northern Sami|Davvisámegiella|
             if (response.ok) {
               const html = await response.text();
               const parsed = parseUserListsDocument(new DOMParser().parseFromString(html, "text/html"));
-              if (parsed.length) lists = parsed;
+              if (parsed) lists = parsed;
             }
           } catch {
             lists = null;
