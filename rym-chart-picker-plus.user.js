@@ -1793,6 +1793,9 @@ se|Northern Sami|Davvisámegiella|
 
       <div class="rym-picker-row" id="rym-picker-lists">
         <span class="rym-picker-label">Lists</span>
+        <div id="rym-lists-actions" class="rym-picker-small-note">
+          <button class="rym-picker-mini-btn" id="rym-lists-find" type="button">Find lists on RYM</button>
+        </div>
         <div id="rym-lists-current"></div>
         <div id="rym-lists-starred"></div>
       </div>
@@ -1865,6 +1868,19 @@ se|Northern Sami|Davvisámegiella|
           <label class="rym-picker-checkitem"><input type="checkbox" id="rym-compat-include-me"><span>Include my own ratings</span></label>
           <div class="rym-compat-list" id="rym-compat-list"></div>
           <div class="rym-picker-small-note">Score is relative to your most compatible user (rank 1 = 100 %). Untick a user to leave them out.</div>
+        </div>
+
+        <div class="rym-picker-setting">
+          <span class="rym-picker-setting-title">Lists</span>
+          <label for="rym-setting-list-search-type">List search type</label>
+          <input type="text" id="rym-setting-list-search-type" />
+          <div class="rym-picker-small-note">RYM's searchtype parameter for lists; change it if the search opens the wrong tab.</div>
+          <div style="height: 7px;"></div>
+          <label for="rym-setting-list-fetch-delay">Delay between list fetches (ms)</label>
+          <input type="number" id="rym-setting-list-fetch-delay" min="1000" step="500" />
+          <div style="height: 7px;"></div>
+          <label for="rym-setting-list-fetch-max">Max lists per click</label>
+          <input type="number" id="rym-setting-list-fetch-max" min="1" max="100" step="1" />
         </div>
 
         <div class="rym-picker-setting">
@@ -2219,6 +2235,24 @@ se|Northern Sami|Davvisámegiella|
     render();
   });
 
+  $("rym-lists-find").addEventListener("click", () => {
+    const url = buildListSearchUrl(state, settings);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  });
+
+  [
+    ["rym-setting-list-search-type", "listSearchType", v => String(v).trim()],
+    ["rym-setting-list-fetch-delay", "listFetchDelayMs", v => parseInt(v, 10)],
+    ["rym-setting-list-fetch-max", "listFetchMax", v => parseInt(v, 10)]
+  ].forEach(([id, key, parse]) => {
+    $(id).addEventListener("change", event => {
+      settings[key] = parse(event.target.value);
+      Object.assign(settings, normalizeSettings(settings));
+      saveSettings();
+      render();
+    });
+  });
+
   $("rym-setting-other-username").addEventListener("change", event => {
     settings.otherUsername = cleanUsername(event.target.value);
     saveSettings();
@@ -2391,6 +2425,9 @@ se|Northern Sami|Davvisámegiella|
 
     $("rym-setting-other-username").value = settings.otherUsername;
     $("rym-setting-own-username").value = settings.ownUsername;
+    $("rym-setting-list-search-type").value = settings.listSearchType;
+    $("rym-setting-list-fetch-delay").value = settings.listFetchDelayMs;
+    $("rym-setting-list-fetch-max").value = settings.listFetchMax;
     $("rym-setting-theme").value = settings.theme;
     $("rym-setting-placement-mode").value = settings.placementMode;
     $("rym-setting-screen-position").value = settings.screenPosition;
@@ -3317,6 +3354,12 @@ se|Northern Sami|Davvisámegiella|
     const starredEl = $("rym-lists-starred");
     currentEl.textContent = "";
     starredEl.textContent = "";
+
+    const findBtn = $("rym-lists-find");
+    $("rym-lists-actions").classList.toggle("rym-picker-hidden", PAGE !== "release" && PAGE !== "chart");
+    const findUrl = buildListSearchUrl(state, settings);
+    findBtn.disabled = !findUrl;
+    findBtn.title = findUrl || "Select a genre or a year first";
 
     if (PAGE === "list") {
       const key = listPathKey(location.href);
