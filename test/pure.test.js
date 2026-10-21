@@ -155,4 +155,26 @@ assert.ok(api.scoreList(l1, listCtx) > api.scoreList(l2, listCtx));
 assert.ok(api.scoreList(l3, listCtx) > api.scoreList(l1, listCtx));
 assert.deepEqual(api.sortListsByScore([l1, l2, l3], listCtx).map(l => l.key), [l3.key, l1.key, l2.key]);
 
+// lists: keys and text parsers
+assert.equal(api.listPathKey("https://rateyourmusic.com/list/AdonTomas/listening-log-2026/2/?x=1#y"), "/list/adontomas/listening-log-2026/");
+assert.equal(api.listPathKey("/list/adontomas/listening-log-2026"), "/list/adontomas/listening-log-2026/");
+assert.equal(api.listPathKey("/list/adontomas/"), null);
+assert.equal(api.listPathKey("/release/album/ecco2k/e/"), null);
+assert.equal(api.parseListIdText("[List1547652] |  +1"), 1547652);
+assert.equal(api.parseLikesText("+1"), 1);
+assert.equal(api.parseLikesText("+1,204"), 1204);
+assert.equal(api.parseLikesText(""), 0);
+assert.equal(api.parseItemsFromNav("369 - 345"), 369);
+assert.equal(api.parseItemsFromNav("Page"), null);
+assert.equal(api.parseItemsFromMeta("Created: 01/02/2026 | Updated: 10/19/2026 | 369 items"), 369);
+// lists: search url
+const searchState = api.createState();
+searchState.primaryGenres.add("cloud-rap");
+searchState.year = api.parseYearSegment("2010s");
+const searchSettings = { ...api.DEFAULT_SETTINGS };
+assert.equal(api.buildListSearchUrl(searchState, searchSettings), "https://rateyourmusic.com/search?searchterm=Cloud%20Rap%202010s&searchtype=" + api.DEFAULT_SETTINGS.listSearchType);
+assert.equal(api.buildListSearchUrl(api.createState(), searchSettings), null);
+assert.equal(api.normalizeSettings({ listFetchMax: 500, listFetchDelayMs: 10 }).listFetchMax, 100);
+assert.equal(api.normalizeSettings({ listFetchMax: 500, listFetchDelayMs: 10 }).listFetchDelayMs, 1000);
+
 console.log("all tests passed");

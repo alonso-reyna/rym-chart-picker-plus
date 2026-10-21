@@ -332,7 +332,10 @@ se|Northern Sami|Davvisámegiella|
     compatMinScore: 0,
     compatMinScoreV2: true,
     compatIncludeMe: false,
-    compatExcluded: []
+    compatExcluded: [],
+    listSearchType: "l",
+    listFetchDelayMs: 3000,
+    listFetchMax: 25
   };
 
   // ---------------------------------------------------------------------------
@@ -861,7 +864,10 @@ se|Northern Sami|Davvisámegiella|
       compatMinScore: minScoreMigrated ? intIn("compatMinScore", 0, 100) : 0,
       compatMinScoreV2: true,
       compatIncludeMe: parsed.compatIncludeMe === true,
-      compatExcluded: arrayOf("compatExcluded")
+      compatExcluded: arrayOf("compatExcluded"),
+      listSearchType: typeof parsed.listSearchType === "string" && parsed.listSearchType.trim() ? parsed.listSearchType.trim() : defaults.listSearchType,
+      listFetchDelayMs: intIn("listFetchDelayMs", 1000, 600000),
+      listFetchMax: intIn("listFetchMax", 1, 100)
     };
   }
 
@@ -929,6 +935,138 @@ se|Northern Sami|Davvisámegiella|
     ).map(item => item.entry);
   }
 
+  // ---- Lists: keys, text parsers, search URL (pure) ----
+  function listPathKey(href) {
+    let path = String(href || "");
+    path = path.replace(/^[a-z]+:\/\/[^/]+/i, "").replace(/[?#].*$/, "");
+    const m = path.match(/^\/list\/([^/]+)\/([^/]+)(?:\/\d+)?\/?$/);
+    if (!m || /^\d+$/.test(m[2])) return null;
+    return `/list/${m[1].toLowerCase()}/${m[2]}/`;
+  }
+
+  function parseListIdText(text) {
+    const m = String(text || "").match(/\[List(\d+)\]/);
+    return m ? Number(m[1]) : null;
+  }
+
+  function parseLikesText(text) {
+    const digits = String(text || "").replace(/[^\d]/g, "");
+    return digits ? parseInt(digits, 10) : 0;
+  }
+
+  function parseItemsFromNav(text) {
+    const nums = (String(text || "").match(/\d+/g) || []).map(Number);
+    return nums.length ? Math.max(...nums) : null;
+  }
+
+  function parseItemsFromMeta(text) {
+    const m = String(text || "").match(/(\d[\d,]*)\s+items?\b/i);
+    return m ? parseInt(m[1].replace(/,/g, ""), 10) : null;
+  }
+
+  function buildListSearchUrl(state, settings) {
+    const parts = Array.from(state.primaryGenres || []).map(labelFromSlug);
+    const year = yearLabel(state.year);
+    if (year) parts.push(year);
+    const term = parts.join(" ").trim();
+    if (!term) return null;
+    const type = (settings && settings.listSearchType) || DEFAULT_SETTINGS.listSearchType;
+    return `https://rateyourmusic.com/search?searchterm=${encodeURIComponent(term)}&searchtype=${type}`;
+  }
+
+  // ---- Lists: DOM parsers (browser only; take a Document) ----
+  function parseListDocument(doc, url) {
+    const content = doc.querySelector("#content") || doc;
+    const idPara = Array.from(content.querySelectorAll("p")).find(p => /\[List\d+\]/.test(p.textContent));
+    if (!idPara) return null;
+    const id = parseListIdText(idPara.textContent);
+    const h1 = content.querySelector("h1");
+    const authorEl = content.querySelector('a.user[href^="/~"]');
+    const catEls = Array.from(content.querySelectorAll('a.genre[href^="/list_classifier/"]'));
+    const likeEl = doc.querySelector('span[id^="favtext_"]');
+    let items = null;
+    const nav = doc.querySelector("#nav_bottom .navlinkcurrent");
+    if (nav) items = parseItemsFromNav(nav.textContent);
+    if (items == null) {
+      const n = doc.querySelectorAll("#user_list td.number").length;
+      items = n || null;
+    }
+    return {
+      key: listPathKey(url),
+      id,
+      url,
+      title: h1 ? h1.textContent.trim() : "",
+      author: authorEl ? authorEl.textContent.trim() : "",
+      categories: catEls.map(a => a.textContent.trim()),
+      categoryHrefs: catEls.map(a => a.getAttribute("href")),
+      likes: likeEl ? parseLikesText(likeEl.textContent) : 0,
+      items
+    };
+  }
+
+  function parseUserListsDocument(doc) {
+    const out = [];
+    for (const a of doc.querySelectorAll("a.listpage_list")) {
+      const href = a.getAttribute("href");
+      const key = listPathKey(href);
+      if (!key) continue;
+      const cell = a.closest("td") || a.parentElement;
+      const meta = cell ? cell.querySelector(".smallgray") : null;
+      out.push({
+        key,
+        url: href,
+        title: a.textContent.trim(),
+        author: key.split("/")[2],
+        items: meta ? parseItemsFromMeta(meta.textContent) : null
+      });
+    }
+    return out;
+  }
+
+  function parseReleaseListsSection(doc) {
+    const anchors = Array.from(doc.querySelectorAll("a[href]")).filter(a =>
+      listPathKey(a.getAttribute("href")) && !a.closest("#rym-picker-panel"));
+    const groups = new Map();
+    for (const a of anchors) {
+      const key = listPathKey(a.getAttribute("href"));
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(a);
+    }
+    const entries = [];
+    for (const [key, list] of groups) {
+      const titled = list.find(a => a.textContent.trim());
+      if (!titled) continue;
+      let card = titled;
+      let author = null;
+      let cover = null;
+      for (let i = 0; i < 4 && card.parentElement; i++) {
+        card = card.parentElement;
+        if (!author) {
+          const u = card.querySelector('a[href^="/~"]');
+          if (u) author = u.textContent.trim();
+        }
+        if (!cover) {
+          const img = card.querySelector("img[src]");
+          if (img) cover = img.getAttribute("src");
+        }
+        if (author && cover) break;
+      }
+      entries.push({
+        key,
+        url: titled.getAttribute("href"),
+        title: titled.textContent.trim(),
+        author: author || key.split("/")[2],
+        cover,
+        anchor: titled
+      });
+    }
+    if (entries.length < 1) return null;
+    let container = entries[0].anchor.parentElement;
+    const kept = entries.map(e => e.anchor);
+    while (container && !kept.every(a => container.contains(a))) container = container.parentElement;
+    return { container, entries };
+  }
+
   const PURE_API = {
     rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
@@ -936,7 +1074,9 @@ se|Northern Sami|Davvisámegiella|
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
     ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS,
     LIST_LOG_CATEGORIES, LIST_OTHER_CATEGORIES, classifyListCategories, classifyListTitle,
-    classifyList, scoreList, sortListsByScore
+    classifyList, scoreList, sortListsByScore,
+    listPathKey, parseListIdText, parseLikesText, parseItemsFromNav, parseItemsFromMeta, buildListSearchUrl,
+    parseListDocument, parseUserListsDocument, parseReleaseListsSection
   };
 
   if (typeof module !== "undefined" && module.exports) {
