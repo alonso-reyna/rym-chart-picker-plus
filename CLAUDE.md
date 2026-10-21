@@ -86,6 +86,8 @@ Capturados del sitio real salvo lo marcado como no verificado.
 - Si RYM bloquea, el script lo dice y manda a abrir las listas a mano; la captura pasiva al visitar una página de
   lista es el camino seguro. No agregues fetch automático ni en paralelo.
 
+- Listas 1.3: `parseReleaseListsSection` falla cerrado (devuelve `null` si el contenedor no es acotado: body/#content, >=60 % de los enlaces, >4 enlaces por lista). Los fetch automáticos solo en release/chart. Escrituras de caché/estrellas se fusionan con lo guardado (`mergeListCaches`/`mergeStarred`). Entradas con lectura >30 días se tratan como no leídas.
+
 ## Roadmap 1.2 (acordado, no empezado)
 
 Presets guardados · canasta persistente entre discos · exclusión con Shift+clic (`-slug`) · atajos de teclado ·

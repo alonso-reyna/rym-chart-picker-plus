@@ -942,9 +942,14 @@ se|Northern Sami|Davvisámegiella|
   function listPathKey(href) {
     let path = String(href || "");
     path = path.replace(/^[a-z]+:\/\/[^/]+/i, "").replace(/[?#].*$/, "");
-    const m = path.match(/^\/list\/([^/]+)\/([^/]+)(?:\/\d+)?\/?$/);
-    if (!m || /^\d+$/.test(m[2])) return null;
-    return `/list/${m[1].toLowerCase()}/${m[2]}/`;
+    const m = path.match(/^\/list\/(.+?)\/?$/);
+    if (!m) return null;
+    let segs = m[1].split("/");
+    if (segs.some(seg => !seg)) return null;
+    // /list/<user>/<slug>/ (slug may be numeric); a numeric third segment is a page number.
+    if (segs.length >= 3 && /^\d+$/.test(segs[segs.length - 1])) segs = segs.slice(0, -1);
+    if (segs.length !== 2) return null;
+    return `/list/${segs[0].toLowerCase()}/${segs[1]}/`;
   }
 
   function parseListIdText(text) {
@@ -957,8 +962,10 @@ se|Northern Sami|Davvisámegiella|
     return digits ? parseInt(digits, 10) : 0;
   }
 
+  // Receives the whole pagination text (current range plus every page link): the largest number is the list size.
   function parseItemsFromNav(text) {
-    const nums = (String(text || "").match(/\d+/g) || []).map(Number);
+    const flat = String(text || "").replace(/(\d),(?=\d{3}(?!\d))/g, "$1");
+    const nums = (flat.match(/\d+/g) || []).map(Number);
     return nums.length ? Math.max(...nums) : null;
   }
 
@@ -988,8 +995,8 @@ se|Northern Sami|Davvisámegiella|
     const catEls = Array.from(content.querySelectorAll('a.genre[href^="/list_classifier/"]'));
     const likeEl = doc.querySelector('span[id^="favtext_"]');
     let items = null;
-    const nav = doc.querySelector("#nav_bottom .navlinkcurrent");
-    if (nav) items = parseItemsFromNav(nav.textContent);
+    const navEls = Array.from(doc.querySelectorAll("#nav_bottom .navlinkcurrent, #nav_bottom .navlinknum"));
+    if (navEls.length) items = parseItemsFromNav(navEls.map(el => el.textContent).join(" "));
     if (items == null) {
       const n = doc.querySelectorAll("#user_list td.number").length;
       items = n || null;
@@ -1028,24 +1035,67 @@ se|Northern Sami|Davvisámegiella|
     return out;
   }
 
+  // True when the node (or an ancestor) is page chrome or our own panel: list links there are not the native Lists block.
+  function isListsExcludedNode(node) {
+    for (let n = node; n; n = n.parentElement) {
+      const tag = String(n.tagName || "").toLowerCase();
+      const id = String(n.id || "");
+      const cls = typeof n.className === "string" ? n.className : "";
+      if (tag === "header" || tag === "nav") return true;
+      if (id === "rym-picker-panel" || id === "page_header") return true;
+      if (/(^|\s)header_/.test(cls)) return true;
+      if (/header|nav/i.test(id) || /header|nav/i.test(cls)) return true;
+    }
+    return false;
+  }
+
+  // Fail-safe: returns null (feature off, page untouched) unless one bounded container holds >= 2 distinct list entries.
   function parseReleaseListsSection(doc) {
-    const anchors = Array.from(doc.querySelectorAll("a[href]")).filter(a =>
-      listPathKey(a.getAttribute("href")) && !a.closest("#rym-picker-panel"));
-    const groups = new Map();
-    for (const a of anchors) {
+    const all = Array.from(doc.querySelectorAll("a[href]"));
+    const cands = [];
+    for (const a of all) {
       const key = listPathKey(a.getAttribute("href"));
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(a);
+      if (!key || !String(a.textContent || "").trim() || isListsExcludedNode(a)) continue;
+      cands.push({ a, key });
+    }
+    const keysIn = node => new Set(cands.filter(c => node.contains(c.a)).map(c => c.key));
+    const groups = new Set();
+    for (const c of cands) {
+      let node = c.a.parentElement;
+      while (node && keysIn(node).size < 2) node = node.parentElement;
+      if (node) groups.add(node);
+    }
+    let container = null;
+    let bestKeys = 0;
+    for (const node of groups) {
+      const n = keysIn(node).size;
+      if (n > bestKeys) {
+        container = node;
+        bestKeys = n;
+      }
+    }
+    if (!container) return null;
+
+    const tag = String(container.tagName || "").toLowerCase();
+    if (tag === "html" || tag === "body" || container.id === "content" || container.id === "content_wrapper") return null;
+    const inner = container.querySelectorAll("a[href]").length;
+    if (all.length && inner >= 0.6 * all.length) return null;
+    if (inner > 4 * bestKeys) return null;
+
+    const groupsByKey = new Map();
+    for (const c of cands) {
+      if (!container.contains(c.a)) continue;
+      if (!groupsByKey.has(c.key)) groupsByKey.set(c.key, c.a);
     }
     const entries = [];
-    for (const [key, list] of groups) {
-      const titled = list.find(a => a.textContent.trim());
-      if (!titled) continue;
+    for (const [key, titled] of groupsByKey) {
       let card = titled;
       let author = null;
       let cover = null;
-      for (let i = 0; i < 4 && card.parentElement; i++) {
-        card = card.parentElement;
+      for (let i = 0; i < 4; i++) {
+        const parent = card.parentElement;
+        if (!parent || parent === container) break;
+        card = parent;
         if (!author) {
           const u = card.querySelector('a[href^="/~"]');
           if (u) author = u.textContent.trim();
@@ -1065,19 +1115,20 @@ se|Northern Sami|Davvisámegiella|
         anchor: titled
       });
     }
-    if (entries.length < 1) return null;
-    let container = entries[0].anchor.parentElement;
-    const kept = entries.map(e => e.anchor);
-    while (container && !kept.every(a => container.contains(a))) container = container.parentElement;
     return { container, entries };
   }
 
   const LIST_CACHE_MAX = 3000;
   const LIST_CACHE_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
+  const LIST_OVERRIDES = ["curated", "log", "other"];
+  function validOverride(value) {
+    return LIST_OVERRIDES.includes(value) ? value : null;
+  }
+
   function isListEntryFresh(entry, now) {
     if (!entry) return false;
-    if (entry.override) return true;
+    if (validOverride(entry.override)) return true;
     return Number.isFinite(entry.fetchedAt) && (now - entry.fetchedAt) <= LIST_CACHE_MAX_AGE_MS;
   }
 
@@ -1090,7 +1141,7 @@ se|Northern Sami|Davvisámegiella|
     const keys = Object.keys(lists);
     if (keys.length > LIST_CACHE_MAX) {
       const droppable = keys
-        .filter(key => !keep.has(key) && !lists[key].override)
+        .filter(key => !keep.has(key) && !validOverride(lists[key].override))
         .sort((a, b) => (lists[a].fetchedAt || 0) - (lists[b].fetchedAt || 0));
       let excess = keys.length - LIST_CACHE_MAX;
       for (const key of droppable) {
@@ -1100,6 +1151,88 @@ se|Northern Sami|Davvisámegiella|
       }
     }
     return { ...cache, lists };
+  }
+
+  // One resolver for F1, F2 and the list-page panel. An expired entry without override is treated as unread:
+  // its category/likes/fetchedAt are not used, so it classifies by title and counts for Rate.
+  const LIST_CACHED_FIELDS = ["title", "likes", "items", "categories", "override", "fetchedAt"];
+  function resolveListEntry(page, cached, now) {
+    const merged = { ...page };
+    const fresh = isListEntryFresh(cached, now);
+    if (!fresh) {
+      delete merged.likes;
+      delete merged.categories;
+      delete merged.fetchedAt;
+    }
+    if (cached) {
+      const fields = fresh ? LIST_CACHED_FIELDS : ["title"];
+      for (const field of fields) {
+        if (cached[field] !== undefined && cached[field] !== null && cached[field] !== "") merged[field] = cached[field];
+      }
+    }
+    merged.cls = classifyList(merged);
+    merged.fresh = fresh;
+    return merged;
+  }
+
+  function sortStarred(items) {
+    return (items || []).filter(item => item && item.key).slice().sort((a, b) => (b.starredAt || 0) - (a.starredAt || 0));
+  }
+
+  // Cross-tab merge applied right before writing. `cleared` = keys whose override this tab just removed.
+  function mergeListCaches(local, remote, cleared) {
+    const clr = cleared instanceof Set ? cleared : new Set(cleared || []);
+    const L = (local && local.lists) || {};
+    const R = (remote && remote.lists) || {};
+    const lists = {};
+    for (const key of new Set([...Object.keys(L), ...Object.keys(R)])) {
+      const a = L[key];
+      const b = R[key];
+      const base = a && b ? ((b.fetchedAt || 0) > (a.fetchedAt || 0) ? b : a) : (a || b);
+      const entry = { ...base };
+      const override = clr.has(key) ? null : (validOverride(a && a.override) || validOverride(b && b.override));
+      if (override) entry.override = override;
+      else delete entry.override;
+      lists[key] = entry;
+    }
+    const compatLists = {};
+    const CL = (local && local.compatLists) || {};
+    const CR = (remote && remote.compatLists) || {};
+    for (const user of new Set([...Object.keys(CL), ...Object.keys(CR)])) {
+      const a = CL[user];
+      const b = CR[user];
+      compatLists[user] = a && b ? ((b.fetchedAt || 0) > (a.fetchedAt || 0) ? b : a) : (a || b);
+    }
+    return { ...(local || {}), version: 1, lists, compatLists };
+  }
+
+  function mergeStarred(local, remote, removed) {
+    const gone = removed instanceof Set ? removed : new Set(removed || []);
+    const map = new Map();
+    const feed = (remote && remote.lists) || [];
+    for (const item of [...feed, ...((local && local.lists) || [])]) {
+      if (!item || !item.key || gone.has(item.key)) continue;
+      const prev = map.get(item.key);
+      if (!prev || (item.starredAt || 0) >= (prev.starredAt || 0)) map.set(item.key, item);
+    }
+    return { version: 1, lists: sortStarred(Array.from(map.values())) };
+  }
+
+  // Sequential queue policy: stops at the first null result (block/unparsable), keeps what was stored before it.
+  async function runFetchQueue(items, { fetchOne, store, wait, isStopped }) {
+    const summary = { fetched: 0, blocked: false, blockedItem: null };
+    for (let i = 0; i < items.length && !isStopped(); i++) {
+      const result = await fetchOne(items[i]);
+      if (!result) {
+        summary.blocked = true;
+        summary.blockedItem = items[i];
+        break;
+      }
+      store(items[i], result);
+      summary.fetched++;
+      if (i < items.length - 1 && !isStopped()) await wait();
+    }
+    return summary;
   }
 
   const PURE_API = {
@@ -1112,7 +1245,8 @@ se|Northern Sami|Davvisámegiella|
     classifyList, scoreList, sortListsByScore,
     listPathKey, parseListIdText, parseLikesText, parseItemsFromNav, parseItemsFromMeta, buildListSearchUrl,
     parseListDocument, parseUserListsDocument, parseReleaseListsSection,
-    LIST_CACHE_MAX, LIST_CACHE_MAX_AGE_MS, pruneListCache, isListEntryFresh
+    LIST_CACHE_MAX, LIST_CACHE_MAX_AGE_MS, pruneListCache, isListEntryFresh,
+    validOverride, resolveListEntry, sortStarred, mergeListCaches, mergeStarred, runFetchQueue, isListsExcludedNode
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -1203,6 +1337,8 @@ se|Northern Sami|Davvisámegiella|
   let listCache = loadListCache();
   let starred = loadStarred();
   let listFetching = false;
+  const clearedOverrides = new Set(); // keys whose override this tab removed since the last save
+  const removedStars = new Set(); // keys unstarred in this tab since the last save
 
   function loadListCache() {
     try {
@@ -1215,7 +1351,10 @@ se|Northern Sami|Davvisámegiella|
   }
 
   function saveListCache() {
-    listCache = pruneListCache(listCache, new Set(starred.lists.map(item => item.key)), Date.now());
+    // Another tab may have written since we loaded: merge instead of overwriting.
+    const merged = mergeListCaches(listCache, loadListCache(), clearedOverrides);
+    listCache = pruneListCache(merged, new Set(starred.lists.map(item => item.key)), Date.now());
+    clearedOverrides.clear();
     GM_setValue(LISTS_KEY, JSON.stringify(listCache));
   }
 
@@ -1223,13 +1362,15 @@ se|Northern Sami|Davvisámegiella|
     try {
       const parsed = readStored(STARRED_KEY);
       if (parsed && Array.isArray(parsed.lists)) {
-        return { version: 1, lists: parsed.lists.filter(item => item && item.key) };
+        return { version: 1, lists: sortStarred(parsed.lists) };
       }
     } catch {}
     return { version: 1, lists: [] };
   }
 
   function saveStarred() {
+    starred = mergeStarred(starred, loadStarred(), removedStars);
+    removedStars.clear();
     GM_setValue(STARRED_KEY, JSON.stringify(starred));
   }
 
@@ -1249,8 +1390,13 @@ se|Northern Sami|Davvisámegiella|
       if (!cls) return;
       entry = listCache.lists[key] = { key };
     }
-    if (cls) entry.override = cls;
-    else delete entry.override;
+    if (cls) {
+      entry.override = cls;
+      clearedOverrides.delete(key);
+    } else {
+      delete entry.override;
+      clearedOverrides.add(key);
+    }
     saveListCache();
   }
 
@@ -1264,12 +1410,14 @@ se|Northern Sami|Davvisámegiella|
     let nowStarred;
     if (index >= 0) {
       starred.lists.splice(index, 1);
+      removedStars.add(entryLike.key);
       nowStarred = false;
     } else {
       const { key, url, title, author, likes } = entryLike;
       const item = { key, url, title, author, starredAt: Date.now() };
       if (likes !== undefined) item.likes = likes;
-      starred.lists.push(item);
+      starred.lists.unshift(item);
+      removedStars.delete(entryLike.key);
       nowStarred = true;
     }
     saveStarred();
@@ -1304,37 +1452,38 @@ se|Northern Sami|Davvisámegiella|
     (async () => {
       const queue = keys.slice(0, settings.listFetchMax);
       try {
-        for (let i = 0; i < queue.length && !stopRequested; i++) {
-          const abort = new AbortController();
-          const timer = setTimeout(() => abort.abort(), 20000);
-          let entry = null;
-          try {
-            const response = await fetch(queue[i], { credentials: "include", signal: abort.signal });
-            if (response.ok) {
+        const result = await runFetchQueue(queue, {
+          async fetchOne(url) {
+            const abort = new AbortController();
+            const timer = setTimeout(() => abort.abort(), 20000);
+            try {
+              const response = await fetch(url, { credentials: "include", signal: abort.signal });
+              if (!response.ok) return null;
               const html = await response.text();
-              entry = parseListDocument(new DOMParser().parseFromString(html, "text/html"), new URL(queue[i], window.location.origin).href);
+              return parseListDocument(new DOMParser().parseFromString(html, "text/html"), new URL(url, window.location.origin).href);
+            } catch {
+              return null;
+            } finally {
+              clearTimeout(timer);
             }
-          } catch {
-            entry = null;
-          } finally {
-            clearTimeout(timer);
-          }
-          if (!entry) {
-            summary.blocked = true;
-            break;
-          }
-          const stored = upsertListEntry(entry);
-          summary.fetched++;
-          if (onEach) onEach(stored);
-          if (i < queue.length - 1 && !stopRequested) {
-            await new Promise(resolve => {
-              wake = resolve;
-              timerId = setTimeout(resolve, settings.listFetchDelayMs);
-            });
+          },
+          store(url, entry) {
+            const stored = upsertListEntry(entry);
+            summary.fetched++;
+            if (onEach) onEach(stored);
+          },
+          wait: () => new Promise(resolve => {
+            wake = resolve;
+            timerId = setTimeout(resolve, settings.listFetchDelayMs);
+          }).then(() => {
             wake = null;
             timerId = null;
-          }
-        }
+          }),
+          isStopped: () => stopRequested
+        });
+        summary.blocked = result.blocked;
+      } catch (error) {
+        console.warn("[RYM Chart Picker+] List fetch failed:", error);
       } finally {
         summary.stopped = stopRequested;
         listFetching = false;
@@ -1349,12 +1498,12 @@ se|Northern Sami|Davvisámegiella|
     GM_addValueChangeListener(LISTS_KEY, (name, oldValue, newValue, remote) => {
       if (!remote) return;
       listCache = loadListCache();
-      render();
+      if (PAGE !== "userlists") render();
     });
     GM_addValueChangeListener(STARRED_KEY, (name, oldValue, newValue, remote) => {
       if (!remote) return;
       starred = loadStarred();
-      render();
+      if (PAGE !== "userlists") render();
     });
   }
 
@@ -1413,39 +1562,39 @@ se|Northern Sami|Davvisámegiella|
     (async () => {
       const queue = usernames.slice(0, COMPAT_LISTS_MAX_USERS);
       try {
-        for (let i = 0; i < queue.length && !stopRequested; i++) {
-          const abort = new AbortController();
-          const timer = setTimeout(() => abort.abort(), 20000);
-          let lists = null;
-          try {
-            const response = await fetch(`/list/${encodeURIComponent(queue[i])}/`, { credentials: "include", signal: abort.signal });
-            if (response.ok) {
+        const result = await runFetchQueue(queue, {
+          async fetchOne(username) {
+            const abort = new AbortController();
+            const timer = setTimeout(() => abort.abort(), 20000);
+            try {
+              const response = await fetch(`/list/${encodeURIComponent(username)}/`, { credentials: "include", signal: abort.signal });
+              if (!response.ok) return null;
               const html = await response.text();
-              const parsed = parseUserListsDocument(new DOMParser().parseFromString(html, "text/html"));
-              if (parsed) lists = parsed;
+              return parseUserListsDocument(new DOMParser().parseFromString(html, "text/html"));
+            } catch {
+              return null;
+            } finally {
+              clearTimeout(timer);
             }
-          } catch {
-            lists = null;
-          } finally {
-            clearTimeout(timer);
-          }
-          if (!lists) {
-            summary.blocked = true;
-            summary.blockedUser = queue[i];
-            break;
-          }
-          storeUserLists(queue[i], lists);
-          summary.fetched++;
-          if (onEach) onEach(queue[i], lists);
-          if (i < queue.length - 1 && !stopRequested) {
-            await new Promise(resolve => {
-              wake = resolve;
-              timerId = setTimeout(resolve, settings.listFetchDelayMs);
-            });
+          },
+          store(username, lists) {
+            storeUserLists(username, lists);
+            summary.fetched++;
+            if (onEach) onEach(username, lists);
+          },
+          wait: () => new Promise(resolve => {
+            wake = resolve;
+            timerId = setTimeout(resolve, settings.listFetchDelayMs);
+          }).then(() => {
             wake = null;
             timerId = null;
-          }
-        }
+          }),
+          isStopped: () => stopRequested
+        });
+        summary.blocked = result.blocked;
+        summary.blockedUser = result.blockedItem;
+      } catch (error) {
+        console.warn("[RYM Chart Picker+] User lists fetch failed:", error);
       } finally {
         summary.stopped = stopRequested;
         listFetching = false;
@@ -2470,7 +2619,8 @@ se|Northern Sami|Davvisámegiella|
     return !compat || !compat.syncedAt || (Date.now() - compat.syncedAt) > COMPAT_MAX_AGE_MS;
   }
 
-  if (settings.userFilters.includes("compat") && compatIsStale() && OWN_USERNAME) {
+  // Automatic fetches only on release/chart pages; list pages stay passive.
+  if ((PAGE === "release" || PAGE === "chart") && settings.userFilters.includes("compat") && compatIsStale() && OWN_USERNAME) {
     setTimeout(() => syncCompat(false), 1500);
   }
 
@@ -3360,18 +3510,8 @@ se|Northern Sami|Davvisámegiella|
   }
 
   function listsDisplayEntries() {
-    return releaseLists.entries.map(page => {
-      const cached = listCache.lists[page.key];
-      const merged = { ...page };
-      if (cached) {
-        for (const field of ["title", "likes", "items", "categories", "override", "fetchedAt"]) {
-          if (cached[field] !== undefined && cached[field] !== null && cached[field] !== "") merged[field] = cached[field];
-        }
-      }
-      merged.cls = classifyList(merged);
-      merged.fresh = isListEntryFresh(cached, Date.now());
-      return merged;
-    });
+    const now = Date.now();
+    return releaseLists.entries.map(page => resolveListEntry(page, listCache.lists[page.key], now));
   }
 
   function listsEl(tag, className, text) {
@@ -3544,23 +3684,26 @@ se|Northern Sami|Davvisámegiella|
     updateCompatListsButton();
   }
 
+  // Lowercased usernames currently selected as compatible (Top N, score, exclusions). Other cached buckets stay cached but unused.
+  function selectedCompatSet() {
+    try {
+      return new Set(selectCompatUsers(compat, settings).map(user => user.username.toLowerCase()));
+    } catch {
+      return new Set();
+    }
+  }
+
   function compatDisplayEntries() {
     const out = [];
     const seen = new Set();
-    for (const data of Object.values(listCache.compatLists || {})) {
-      for (const item of (data && data.lists) || []) {
+    const selected = selectedCompatSet();
+    const now = Date.now();
+    for (const [user, data] of Object.entries(listCache.compatLists || {})) {
+      if (!selected.has(user.toLowerCase())) continue;
+      for (const item of (data && Array.isArray(data.lists) ? data.lists : [])) {
         if (!item || !item.key || seen.has(item.key)) continue;
         seen.add(item.key);
-        const cached = listCache.lists[item.key];
-        const merged = { ...item };
-        if (cached) {
-          for (const field of ["title", "likes", "items", "categories", "override", "fetchedAt"]) {
-            if (cached[field] !== undefined && cached[field] !== null && cached[field] !== "") merged[field] = cached[field];
-          }
-        }
-        merged.cls = classifyList(merged);
-        merged.fresh = isListEntryFresh(cached, Date.now());
-        out.push(merged);
+        out.push(resolveListEntry(item, listCache.lists[item.key], now));
       }
     }
     return out;
@@ -3599,7 +3742,7 @@ se|Northern Sami|Davvisámegiella|
     compatModalEl.appendChild(box);
 
     const all = compatDisplayEntries();
-    const compatUsers = new Set((listCache.compatLists ? Object.keys(listCache.compatLists) : []).map(name => name.toLowerCase()));
+    const compatUsers = selectedCompatSet();
     const starredKeys = new Set(starred.lists.map(item => item.key));
     const curated = sortListsByScore(all.filter(e => e.cls.cls === "curated"), { compatUsers, starred: starredKeys });
     const unrated = all.filter(e => e.cls.cls === "unknown");
@@ -3684,14 +3827,14 @@ se|Northern Sami|Davvisámegiella|
       const cached = key && listCache.lists[key];
       currentEl.appendChild(listsEl("div", "rym-lists-block-title", "This list"));
       if (cached) {
-        currentEl.appendChild(buildListRow(Object.assign({}, cached, { cls: classifyList(cached) }), new Set()));
+        currentEl.appendChild(buildListRow(resolveListEntry(cached, cached, Date.now()), selectedCompatSet()));
       } else {
         currentEl.appendChild(listsEl("div", "rym-lists-empty", "This list could not be read."));
       }
     }
 
     starredEl.appendChild(listsEl("div", "rym-lists-block-title", "Starred"));
-    const items = starred.lists;
+    const items = sortStarred(starred.lists);
     if (items.length === 0) {
       starredEl.appendChild(listsEl("div", "rym-lists-empty", "No starred lists yet"));
       return;
@@ -3744,10 +3887,7 @@ se|Northern Sami|Davvisámegiella|
       }
       view.textContent = "";
 
-      let compatUsers = new Set();
-      try {
-        compatUsers = new Set(selectCompatUsers(compat, settings).map(user => user.username.toLowerCase()));
-      } catch {}
+      const compatUsers = selectedCompatSet();
       const starredKeys = new Set(starred.lists.map(item => item.key));
       const all = listsDisplayEntries();
       const curated = sortListsByScore(all.filter(e => e.cls.cls === "curated"), { compatUsers, starred: starredKeys });

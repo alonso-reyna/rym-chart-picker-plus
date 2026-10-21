@@ -196,4 +196,168 @@ const prunedBig = api.pruneListCache(big, new Set([`/list/u/${api.LIST_CACHE_MAX
 assert.equal(Object.keys(prunedBig.lists).length, api.LIST_CACHE_MAX);
 assert.ok(prunedBig.lists[`/list/u/${api.LIST_CACHE_MAX}/`]);
 
+// ---- fix wave: keys, nav, resolver, merges, queue, release parser ----
+assert.equal(api.listPathKey("/list/u/1994/"), "/list/u/1994/");
+assert.equal(api.listPathKey("/list/u/1994/2/"), "/list/u/1994/");
+assert.equal(api.listPathKey("/list/U/slug/15"), "/list/u/slug/");
+assert.equal(api.listPathKey("/list/u/slug/extra/"), null);
+assert.equal(api.listPathKey("/list/u/"), null);
+assert.equal(api.listPathKey("/list/u/slug/2/3/"), null);
+assert.equal(api.parseItemsFromNav("344 - 320 369 - 345 319 - 295 19 - 1"), 369);
+assert.equal(api.parseItemsFromNav("1,204 - 1,180 1,229 - 1,205"), 1229);
+assert.equal(api.parseItemsFromNav("1,204 - 1,180"), 1204);
+
+// expiry: stale entry without override is unread; override and star survive
+const T = Date.now();
+const staleOld = T - 31 * 24 * 3600 * 1000;
+const page = { key: "/list/a/x/", url: "/list/a/x/", title: "Best of x", author: "a" };
+const rStale = api.resolveListEntry(page, { title: "Best of x (full)", categories: ["Best Of"], likes: 50, items: 9, fetchedAt: staleOld }, T);
+assert.equal(rStale.fresh, false);
+assert.deepEqual(rStale.cls, { cls: "unknown", provisional: false });
+assert.equal(rStale.likes, undefined);
+assert.equal(rStale.fetchedAt, undefined);
+assert.equal(rStale.title, "Best of x (full)");
+const rStaleLog = api.resolveListEntry({ ...page, title: "listening log" }, { categories: ["Best Of"], likes: 50, fetchedAt: staleOld }, T);
+assert.deepEqual(rStaleLog.cls, { cls: "log", provisional: true });
+const rFresh = api.resolveListEntry(page, { categories: ["Best Of"], likes: 50, fetchedAt: T - 1000 }, T);
+assert.equal(rFresh.fresh, true);
+assert.equal(rFresh.cls.cls, "curated");
+const rOver = api.resolveListEntry(page, { categories: ["Best Of"], likes: 50, fetchedAt: staleOld, override: "other" }, T);
+assert.equal(rOver.fresh, true);
+assert.equal(rOver.cls.cls, "other");
+assert.equal(api.resolveListEntry(page, null, T).fresh, false);
+assert.equal(api.isListEntryFresh({ fetchedAt: staleOld, override: "weird" }, T), false);
+
+// pruning: exact removed key; override and star protected; ties keep insertion order
+const pr = { version: 1, lists: {} };
+for (let i = 0; i < api.LIST_CACHE_MAX + 1; i++) pr.lists[`/list/u/s${i}/`] = { key: `/list/u/s${i}/`, fetchedAt: T - 1000 + i };
+pr.lists["/list/u/s0/"].override = "log"; // oldest but protected
+const prOut = api.pruneListCache(pr, new Set(["/list/u/s1/"]), T);
+assert.ok(prOut.lists["/list/u/s0/"] && prOut.lists["/list/u/s1/"]);
+assert.equal(prOut.lists["/list/u/s2/"], undefined); // oldest unprotected goes
+assert.ok(prOut.lists["/list/u/s3/"]);
+assert.equal(Object.keys(prOut.lists).length, api.LIST_CACHE_MAX);
+const tie = { version: 1, lists: {} };
+for (let i = 0; i < api.LIST_CACHE_MAX + 1; i++) tie.lists[`/list/u/t${i}/`] = { key: `/list/u/t${i}/`, fetchedAt: T };
+const tieOut = api.pruneListCache(tie, new Set(), T);
+assert.equal(tieOut.lists["/list/u/t0/"], undefined);
+assert.ok(tieOut.lists["/list/u/t1/"]);
+
+// cross-tab merges
+const mk = (key, fetchedAt, extra) => ({ key, fetchedAt, ...extra });
+const mergedC = api.mergeListCaches(
+  { lists: { a: mk("a", 10, { likes: 1 }), b: mk("b", 5, { override: "log" }), c: mk("c", 1, { override: "other" }), d: mk("d", 1, { override: "log" }) },
+    compatLists: { u: { fetchedAt: 5, lists: [1] } } },
+  { lists: { a: mk("a", 20, { likes: 2, override: "curated" }), b: mk("b", 9, { likes: 7 }), c: mk("c", 1, { override: "log" }), e: mk("e", 3), d: mk("d", 1, { override: "log" }) },
+    compatLists: { u: { fetchedAt: 9, lists: [2] }, v: { fetchedAt: 1, lists: [] } } },
+  new Set(["d"])
+);
+assert.equal(mergedC.lists.a.likes, 2); // newer fetchedAt wins
+assert.equal(mergedC.lists.a.override, "curated"); // override from either side beats none
+assert.equal(mergedC.lists.b.likes, 7);
+assert.equal(mergedC.lists.b.override, "log"); // local override kept over newer remote without one
+assert.equal(mergedC.lists.c.override, "other"); // both non-null: in-memory side wins
+assert.equal(mergedC.lists.d.override, undefined); // removed in this tab
+assert.ok(mergedC.lists.e);
+assert.deepEqual(mergedC.compatLists.u.lists, [2]);
+assert.ok(mergedC.compatLists.v);
+const mergedS = api.mergeStarred(
+  { lists: [{ key: "a", starredAt: 5 }, { key: "b", starredAt: 9 }] },
+  { lists: [{ key: "a", starredAt: 8 }, { key: "c", starredAt: 7 }, { key: "x", starredAt: 99 }] },
+  new Set(["x"])
+);
+assert.deepEqual(mergedS.lists.map(i => i.key + i.starredAt), ["b9", "a8", "c7"]);
+// starred order: eleven stars, newest first, re-starred goes first
+const eleven = Array.from({ length: 11 }, (_, i) => ({ key: "k" + i, starredAt: i + 1 }));
+assert.equal(api.sortStarred(eleven)[0].key, "k10");
+assert.equal(api.sortStarred(eleven).slice(0, 10).some(i => i.key === "k0"), false);
+assert.equal(api.sortStarred([{ key: "a", starredAt: 1 }, { key: "a2", starredAt: 50 }])[0].key, "a2");
+
+// fetch queue: 200,200,403 keeps two, makes exactly three calls, never a fourth; 503 likewise
+(async () => {
+  for (const bad of [403, 503]) {
+    const calls = [];
+    const stored = [];
+    const statuses = [200, 200, bad, 200];
+    const summary = await api.runFetchQueue(["u1", "u2", "u3", "u4"], {
+      fetchOne: async item => { calls.push(item); return statuses[calls.length - 1] === 200 ? { item } : null; },
+      store: (item, result) => stored.push(item),
+      wait: async () => {},
+      isStopped: () => false
+    });
+    assert.deepEqual(calls, ["u1", "u2", "u3"]);
+    assert.deepEqual(stored, ["u1", "u2"]);
+    assert.equal(summary.fetched, 2);
+    assert.equal(summary.blocked, true);
+    assert.equal(summary.blockedItem, "u3");
+  }
+  let stop = false;
+  const s2 = await api.runFetchQueue(["a", "b", "c"], { fetchOne: async i => ({ i }), store: () => { stop = true; }, wait: async () => {}, isStopped: () => stop });
+  assert.equal(s2.fetched, 1);
+  assert.equal(s2.blocked, false);
+})().then(() => console.log("queue tests passed"), error => { console.error(error); process.exit(1); });
+
+// release parser on a tiny fake DOM
+class FakeNode {
+  constructor(tag, { id = "", className = "", href = null, text = "", src = null } = {}) {
+    this.tagName = tag.toUpperCase();
+    this.id = id;
+    this.className = className;
+    this.parentElement = null;
+    this.children = [];
+    this._href = href;
+    this._src = src;
+    this._text = text;
+  }
+  add(...nodes) { for (const n of nodes) { n.parentElement = this; this.children.push(n); } return this; }
+  get textContent() { return this._text + this.children.map(c => c.textContent).join(""); }
+  all() { return this.children.flatMap(c => [c, ...c.all()]); }
+  contains(node) { for (let n = node; n; n = n.parentElement) if (n === this) return true; return false; }
+  getAttribute(name) { return name === "href" ? this._href : name === "src" ? this._src : null; }
+  querySelectorAll(sel) {
+    const pool = this.all();
+    if (sel === "a[href]") return pool.filter(n => n.tagName === "A" && n._href != null);
+    throw new Error("unsupported selector " + sel);
+  }
+  querySelector(sel) {
+    const pool = this.all();
+    if (sel === 'a[href^="/~"]') return pool.find(n => n.tagName === "A" && n._href && n._href.startsWith("/~")) || null;
+    if (sel === "img[src]") return pool.find(n => n.tagName === "IMG" && n._src != null) || null;
+    throw new Error("unsupported selector " + sel);
+  }
+}
+const el = (tag, opts) => new FakeNode(tag, opts);
+const link = (href, text) => el("a", { href, text });
+const card = (user, slug, title) => el("div", { className: "release_list_item" }).add(el("a", { href: `/list/${user}/${slug}/` }).add(el("img", { src: "/c.jpg" })), link(`/list/${user}/${slug}/`, title), link(`/~${user}`, user));
+const page2 = (...bodyNodes) => { const html = el("html"); const body = el("body"); html.add(body); body.add(...bodyNodes); return html; };
+const filler = n => Array.from({ length: n }, (_, i) => link(`/x/${i}`, "x" + i));
+
+// 1. no lists at all / markup foreign to the fixture: null, no throw
+assert.equal(api.parseReleaseListsSection(page2(el("div").add(...filler(10)))), null);
+// 2. one isolated list link in a review: null
+assert.equal(api.parseReleaseListsSection(page2(el("div", { id: "review" }).add(link("/list/me/favs/", "my favs"), ...filler(10)))), null);
+// 3. a good section plus a stray full list link in the header: section found, header link ignored
+const sec = el("div", { className: "section_lists" }).add(el("h2", { text: "Lists" }), card("a", "one", "One"), card("b", "two", "Two"));
+const hdr = el("div", { className: "header_menu" }).add(link("/list/me/favorites/", "Favorites"));
+const doc3 = page2(hdr, el("div", { id: "content" }).add(...filler(20), sec));
+const r3 = api.parseReleaseListsSection(doc3);
+assert.ok(r3 && r3.container === sec);
+assert.deepEqual(r3.entries.map(e => e.key), ["/list/a/one/", "/list/b/two/"]);
+assert.equal(r3.entries[0].author, "a");
+assert.equal(r3.entries[0].cover, "/c.jpg");
+// 4. stray list link in a comment area outside the section: container must not widen to content/body
+const doc4 = page2(el("div", { id: "content" }).add(...filler(20), sec, el("div", { id: "comments" }).add(link("/list/z/other/", "Other"))));
+const r4 = api.parseReleaseListsSection(doc4);
+assert.equal(r4, null); // LCA is #content: rejected, feature stays off
+// 5. single native card: null
+assert.equal(api.parseReleaseListsSection(page2(el("div", { id: "content" }).add(...filler(20), el("div").add(card("a", "one", "One"))))), null);
+// 6. two sections: the one with most distinct lists wins
+const small = el("div", { className: "box" }).add(card("a", "one", "One"), card("b", "two", "Two"));
+const big3 = el("div", { className: "box" }).add(card("c", "x", "X"), card("d", "y", "Y"), card("e", "z", "Z"));
+const r6 = api.parseReleaseListsSection(page2(el("div", { id: "wrap" }).add(...filler(30), small), el("div", { id: "wrap2" }).add(...filler(30), big3)));
+assert.ok(r6 && r6.container === big3 && r6.entries.length === 3);
+// 7. container with too many anchors per entry is rejected
+const noisy = el("div", { className: "box" }).add(card("a", "one", "One"), card("b", "two", "Two"), ...filler(30));
+assert.equal(api.parseReleaseListsSection(page2(...filler(60), noisy)), null);
+
 console.log("all tests passed");
