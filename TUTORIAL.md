@@ -124,8 +124,8 @@ estrella suben en el orden y no se borran de la caché.
 **Clasificación manual.** El selector de cada fila (`auto / curated / log / other`) fuerza la clasificación cuando el
 script se equivoca. Se recuerda y `auto` la devuelve al cálculo normal.
 
-**Find lists on RYM.** En el panel (sección Lists) abre en pestaña nueva una búsqueda de listas con el género/descriptor
-elegidos. Ojo: el tipo de búsqueda (`List search type` en ⚙) no está verificado; si abre discos en vez de listas,
+**Find lists on RYM.** En el panel (sección Lists) abre en pestaña nueva una búsqueda de listas con los géneros
+primarios elegidos (sus nombres) más el chip de año (año, década o rango; se omite si es "all time"). Ojo: el tipo de búsqueda (`List search type` en ⚙) no está verificado; si abre discos en vez de listas,
 cámbialo ahí.
 
 **Lists by compatible users.** Abre una ventana con las listas de tus compatibles (los del top N de settings),
