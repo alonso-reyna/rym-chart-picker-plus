@@ -219,3 +219,17 @@ Cada uno necesita el HTML real guardado como fixture en `test/fixtures/`:
   fixtures reales.
 - Orden de implementación sugerido: F4 (parser de lista + caché + estrella) → F1 → F3 → F2.
 - Actualizar `TUTORIAL.md` y `CLAUDE.md` (hechos verificados, claves nuevas, semántica de Cloudflare).
+
+## Estado (2026-10-21)
+
+Implementado en 1.3.0 (rama `lists-1.3`): parser de página de lista y de índice de usuario, caché con frescura de
+7 días y poda (las listas con estrella u override se conservan), captura pasiva al visitar una lista, estrella y
+favoritas, pestañas Curated/Unrated/Logs en el release con "Rate N unrated", botón Find lists on RYM, ventana
+Lists by compatible users, overrides de clasificación y settings (`List search type`, delay, tope).
+
+Por verificar en RYM real:
+
+- Markup de la sección de listas de la página de release (el fixture es una suposición; el parser es por anclas).
+- El valor correcto de `searchtype` para listas (`l` devolvió discos).
+- Comportamiento de Cloudflare con el delay por defecto de 3 s en tandas de 25.
+

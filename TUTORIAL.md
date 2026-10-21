@@ -100,9 +100,51 @@ Listing (**Top / Popular / Esoteric / Diverse**) se elige en ⚙ y se recuerda.
 - **Your username**: se detecta solo del header. Si dice "Not detected", escríbelo aquí y recarga.
 - **Panel behavior**: "Stay visible while scrolling" si prefieres el panel fijo.
 
+## 9. Listas (1.3)
+
+Tres usos: ver con criterio las listas donde aparece un disco, guardar las que valen la pena, y encontrar
+listas de la gente compatible contigo.
+
+**En la página de un disco.** La sección de listas de RYM se reemplaza por una vista con pestañas
+**Curated / Unrated / Logs & other / All** (el número entre paréntesis es cuántas hay). Curated son listas
+temáticas; Logs son listening logs y similares; Unrated son las que el script aún no ha abierto. Cada fila trae
+portada, título, autor, chips (`♥ likes`, `N items`, `compat` si el autor está en tu lista de compatibles), una
+estrella y un selector de clasificación. "Show RYM's view" regresa la sección original; "Show Chart Picker+ view"
+vuelve a la nueva.
+
+**Botón "Rate N unrated (~Ns)".** Abre cada lista sin calificar, una por una y con pausa, para leer likes, items y
+categorías. Se puede parar con "Stop". Si RYM bloquea (Cloudflare), el script avisa "RYM blocked the fetch; open
+lists manually, they get rated as you visit them": abre las listas tú mismo y se guardan solas al visitarlas. Eso
+es lo más seguro; el botón solo conviene en tandas chicas.
+
+**Estrella y favoritas.** La estrella (☆/★, "Star this list") guarda la lista. En el panel, sección **Lists**, aparece
+"Starred" con las 10 más recientes (hay opción de ver todas) y una "x" para quitarlas ("Unstar"). Las listas con
+estrella suben en el orden y no se borran de la caché.
+
+**Clasificación manual.** El selector de cada fila (`auto / curated / log / other`) fuerza la clasificación cuando el
+script se equivoca. Se recuerda y `auto` la devuelve al cálculo normal.
+
+**Find lists on RYM.** En el panel (sección Lists) abre en pestaña nueva una búsqueda de listas con el género/descriptor
+elegidos. Ojo: el tipo de búsqueda (`List search type` en ⚙) no está verificado; si abre discos en vez de listas,
+cámbialo ahí.
+
+**Lists by compatible users.** Abre una ventana con las listas de tus compatibles (los del top N de settings),
+agrupadas en Curated / Unrated / Logs & other. "Rate N unrated" funciona igual que arriba; "Stop fetching" lo detiene
+y, si RYM bloquea a un usuario, aparece "Open <user>'s lists" para abrir su índice a mano. La frescura es de 7 días
+por usuario.
+
+**Settings nuevos (⚙, bloque Lists).**
+
+- **List search type**: valor de `searchtype` para buscar listas.
+- **Delay between list fetches (ms)**: pausa entre listas (default 3000, mínimo 1000).
+- **Max lists per click**: tope por clic (default 25, máximo 100).
+
+Qué no hace: no agrupa "listas que sigues encontrando" entre varios discos (descartado).
+
 ## 8. Si algo falla
 
 - El chart abre el ranking general (OK Computer, To Pimp a Butterfly…): el filtro no se aplicó. Mira el URL
   gris del panel y pásamelo.
 - "Could not detect your username": settings → Your username.
 - "No compatible users yet": Sync now.
+- Las listas dicen "RYM blocked the fetch": espera unos minutos, abre las listas a mano y súbele el delay en settings.

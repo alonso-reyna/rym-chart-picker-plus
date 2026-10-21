@@ -37,14 +37,34 @@ Cachéalos: cada uno costó una prueba en vivo y RYM los cambia sin avisar.
 - Release: `.album_info tr` con `th` Artist/Type/Released/Recorded/Genres/Descriptors/Language.
   Géneros en `.release_pri_genres a.genre` y `.release_sec_genres a.genre`. Username propio: `a.header_profile_main`.
 
+## Hechos de RYM verificados (2026-10-21, listas)
+
+Capturados del sitio real salvo lo marcado como no verificado.
+
+- Página de lista `/list/<user>/<slug>/`: título en `#content h1`; autor `a.user[href^="/~"]`; categorías
+  `Categories:` → `a.genre[href^="/list_classifier/<Name>/"]`; id como `[List<id>]` dentro de un `<p>`; likes en
+  `span[id^="favtext_"]` como `+N`; items = el número máximo de `#nav_bottom .navlinkcurrent` ("369 - 345") o, sin
+  paginación, el conteo de `table#user_list td.number`.
+- Índice de listas de un usuario `/list/<user>/`: `table.mbgen` con filas `a.listpage_list` y `.smallgray`
+  "Created: … | Updated: … | N items".
+- `/list_classifier/<Name>/` es plano, paginado y sin ranking (sin likes, sin filtro de género/año): inútil para descubrir.
+- `/search?searchterm=…&searchtype=l` devolvió discos, no listas: el tipo de búsqueda de listas **no está verificado**
+  (setting `List search type`).
+- El markup de la sección de listas en la página de release **no está verificado** (Cloudflare bloqueó la captura).
+  El parser se basa en anclas `/list/<user>/<slug>/`; el bloque del fixture es una suposición.
+- `fetch` repetido desde la página dispara Cloudflare (403/503) también con listas. Ver política abajo.
+
 ## Convenciones
 
 - Settings bajo la clave `rym_chart_picker_settings_v16` (compartida con el script original; no la cambies).
   Lista de compatibles bajo `rym_chart_picker_compat_v1`.
+- Listas (1.3): caché y `compatLists` bajo `rym_chart_picker_lists_v1`; listas con estrella bajo
+  `rym_chart_picker_starred_lists_v1`. Settings nuevos: `listSearchType`, `listFetchDelayMs` (default 3000), `listFetchMax` (default 25).
 - Toda lógica de URL (parse/build) es pura y va arriba del `if (typeof module !== "undefined")`. Si tocas
   esa lógica, agrega el caso al test.
 - UI en inglés (como RYM); docs y conversación en español.
-- Lo que el usuario descartó: campos de rango de año y botón ±N (quitados en 1.1.1, no los regreses).
+- Lo que el usuario descartó: campos de rango de año y botón ±N (quitados en 1.1.1, no los regreses); agregación
+  "lists you keep running into" (listas que se repiten entre varios discos, 1.3; no la propongas).
 - Orden del panel (1.1.2, pedido por Alonso): Year · Primary · Secondary · Descriptors · Music releases · Languages · Users.
   Year e idiomas sin texto explicativo ("all time" como chip, "none"). La tabla Music releases imita el filtro nativo
   de RYM; `TYPE_PRESETS.albums`/`singles` están asumidos (album / single), no verificados contra RYM.
@@ -58,6 +78,13 @@ Cachéalos: cada uno costó una prueba en vivo y RYM los cambia sin avisar.
 - El `@namespace` cambió a `alonso-reyna` en 1.1.2; una instalación vieja (`alonsoreyna`) convive como script aparte.
 - Revisión GPT 2026-10-20 pendiente de atender (bajo impacto): restaurar `innerHTML` al apagar Search pierde listeners
   de RYM; no hay observer para cuando RYM re-renderiza una fila; `window.open` del fallback puede bloquearse como popup.
+
+## Política anti-Cloudflare para listas (1.3)
+
+- El fetch de listas solo ocurre por clic ("Rate N unrated", "Lists by compatible users"): secuencial, con delay
+  (`listFetchDelayMs`) y tope (`listFetchMax`), y se detiene en el primer error.
+- Si RYM bloquea, el script lo dice y manda a abrir las listas a mano; la captura pasiva al visitar una página de
+  lista es el camino seguro. No agregues fetch automático ni en paralelo.
 
 ## Roadmap 1.2 (acordado, no empezado)
 
