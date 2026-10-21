@@ -1127,6 +1127,7 @@ se|Northern Sami|Davvisámegiella|
     : /^\/charts\//.test(pathname) ? "chart"
     : /^\/find_similar_users/.test(pathname) ? "compat"
     : /^\/list\/[^/]+\/[^/]+/.test(pathname) ? "list"
+    : /^\/list\/[^/]+\/?$/.test(pathname) ? "userlists"
     : null;
 
   if (!PAGE) return;
@@ -1356,6 +1357,100 @@ se|Northern Sami|Davvisámegiella|
   }
 
   if (PAGE === "list") captureListFromCurrentPage();
+
+  const COMPAT_LISTS_MAX_USERS = 10;
+
+  function isCompatListsFresh(entry, now) {
+    return !!entry && Number.isFinite(entry.fetchedAt) && (now - entry.fetchedAt) <= LIST_CACHE_MAX_AGE_MS;
+  }
+
+  function storeUserLists(username, lists) {
+    listCache.compatLists = listCache.compatLists || {};
+    listCache.compatLists[String(username).toLowerCase()] = { fetchedAt: Date.now(), lists };
+    saveListCache();
+  }
+
+  function captureUserListsFromCurrentPage() {
+    const m = /^\/list\/([^/]+)\/?$/.exec(pathname);
+    if (!m) return;
+    const username = decodeURIComponent(m[1]).toLowerCase();
+    const lists = parseUserListsDocument(document);
+    if (lists.length === 0) return;
+    storeUserLists(username, lists);
+    toast(`Saved ${lists.length} lists by ${username}.`);
+  }
+
+  if (PAGE === "userlists") {
+    captureUserListsFromCurrentPage();
+    return;
+  }
+
+  // Same policy as fetchListsSequentially and the same busy flag, so the two loops never overlap.
+  // Sequential, user-initiated only: never call this without a click behind it.
+  function fetchUserListsSequentially(usernames, { onEach, onDone } = {}) {
+    const summary = { fetched: 0, blocked: false, stopped: false, blockedUser: null };
+    let stopRequested = false;
+    let timerId = null;
+    let wake = null;
+    const handle = {
+      stop() {
+        stopRequested = true;
+        if (timerId) clearTimeout(timerId);
+        if (wake) wake();
+      }
+    };
+
+    if (listFetching) {
+      if (onDone) onDone({ ...summary, busy: true });
+      return handle;
+    }
+    listFetching = true;
+
+    (async () => {
+      const queue = usernames.slice(0, COMPAT_LISTS_MAX_USERS);
+      try {
+        for (let i = 0; i < queue.length && !stopRequested; i++) {
+          const abort = new AbortController();
+          const timer = setTimeout(() => abort.abort(), 20000);
+          let lists = null;
+          try {
+            const response = await fetch(`/list/${encodeURIComponent(queue[i])}/`, { credentials: "include", signal: abort.signal });
+            if (response.ok) {
+              const html = await response.text();
+              const parsed = parseUserListsDocument(new DOMParser().parseFromString(html, "text/html"));
+              if (parsed.length) lists = parsed;
+            }
+          } catch {
+            lists = null;
+          } finally {
+            clearTimeout(timer);
+          }
+          if (!lists) {
+            summary.blocked = true;
+            summary.blockedUser = queue[i];
+            break;
+          }
+          storeUserLists(queue[i], lists);
+          summary.fetched++;
+          if (onEach) onEach(queue[i], lists);
+          if (i < queue.length - 1 && !stopRequested) {
+            await new Promise(resolve => {
+              wake = resolve;
+              timerId = setTimeout(resolve, settings.listFetchDelayMs);
+            });
+            wake = null;
+            timerId = null;
+          }
+        }
+      } finally {
+        summary.stopped = stopRequested;
+        listFetching = false;
+        if (onDone) onDone(summary);
+      }
+    })();
+
+    return handle;
+  }
 
   function initChartState() {
     const { state: parsed, listing } = parseChartPath(pathname);
@@ -1689,29 +1784,48 @@ se|Northern Sami|Davvisámegiella|
     #rym-picker-lists .rym-lists-unstar { visibility: hidden; border: 0; background: transparent; color: inherit; cursor: pointer; margin-left: auto; }
     #rym-picker-lists .rym-lists-starred-item:hover .rym-lists-unstar { visibility: visible; }
     #rym-lists-wrap { margin: 8px 0 14px; font-size: 13px; line-height: 1.35; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-title { font-weight: 700; font-size: 15px; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-tab, #rym-lists-wrap .rym-lists-btn {
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-title { font-weight: 700; font-size: 15px; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-tab, #rym-lists-wrap .rym-lists-btn, #rym-lists-modal .rym-lists-btn {
       border: 1px solid rgba(128,128,128,.5); background: transparent; color: inherit; border-radius: 3px;
       padding: 2px 8px; font: inherit; cursor: pointer;
     }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-tab.rym-lists-tab-on { background: #1676d2; border-color: #1676d2; color: #fff; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-link { margin-left: auto; cursor: pointer; text-decoration: underline; opacity: .8; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-status { opacity: .8; margin-bottom: 6px; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-sub { font-weight: 700; margin: 8px 0 2px; opacity: .8; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-empty { opacity: .6; padding: 6px 0; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-row {
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-tab.rym-lists-tab-on { background: #1676d2; border-color: #1676d2; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-link { margin-left: auto; cursor: pointer; text-decoration: underline; opacity: .8; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-status { opacity: .8; margin-bottom: 6px; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-sub { font-weight: 700; margin: 8px 0 2px; opacity: .8; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-empty { opacity: .6; padding: 6px 0; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-row {
       display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid rgba(128,128,128,.25);
     }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-cover { width: 36px; height: 36px; flex: none; background: rgba(128,128,128,.25); object-fit: cover; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; justify-content: flex-end; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-chip { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(128,128,128,.5); white-space: nowrap; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-chip-log { background: #b3261e; border-color: #b3261e; color: #fff; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-chip-curated { background: #2e7d32; border-color: #2e7d32; color: #fff; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-chip-other { background: #777; border-color: #777; color: #fff; }
-    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-star { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; padding: 0 2px; }
-    :is(#rym-lists-wrap, #rym-picker-lists) select { font-size: 11px; max-width: 80px; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-cover { width: 36px; height: 36px; flex: none; background: rgba(128,128,128,.25); object-fit: cover; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; justify-content: flex-end; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-chip { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(128,128,128,.5); white-space: nowrap; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-chip-log { background: #b3261e; border-color: #b3261e; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-chip-curated { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-chip-other { background: #777; border-color: #777; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) .rym-lists-star { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; padding: 0 2px; }
+    :is(#rym-lists-wrap, #rym-picker-lists, #rym-lists-modal) select { font-size: 11px; max-width: 80px; }
+    #rym-lists-modal {
+      --rym-bg: #171717; --rym-bg-3: #2d2d2d; --rym-border: #3b3b3b; --rym-border-2: #555;
+      --rym-text: #d7d7d7; --rym-muted: #9a9a9a;
+      position: fixed; inset: 0; z-index: 9999998; background: rgba(0,0,0,.6);
+      display: flex; align-items: center; justify-content: center;
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #rym-lists-modal .rym-lists-modal-box {
+      background: var(--rym-bg); color: var(--rym-text); border: 1px solid var(--rym-border);
+      border-radius: 3px; box-shadow: 0 6px 24px rgba(0,0,0,.5);
+      width: min(760px, 92vw); max-height: 86vh; overflow-y: auto; padding: 12px 14px;
+    }
+    #rym-lists-modal .rym-lists-btn {
+      border: 1px solid rgba(128,128,128,.5); background: transparent; color: inherit; border-radius: 3px; padding: 1px 8px; cursor: pointer; font-size: 12px;
+    }
+    #rym-lists-modal .rym-lists-btn:disabled { opacity: .6; cursor: default; }
+    #rym-lists-modal .rym-lists-close { margin-left: auto; font-size: 18px; line-height: 1; }
+    #rym-lists-modal .rym-lists-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+    #rym-lists-modal a { color: #4aa3ff; }
   `);
 
   // ---------------------------------------------------------------------------
@@ -1795,6 +1909,7 @@ se|Northern Sami|Davvisámegiella|
         <span class="rym-picker-label">Lists</span>
         <div id="rym-lists-actions" class="rym-picker-small-note">
           <button class="rym-picker-mini-btn" id="rym-lists-find" type="button">Find lists on RYM</button>
+          <button class="rym-picker-mini-btn" id="rym-lists-compat" type="button">Lists by compatible users</button>
         </div>
         <div id="rym-lists-current"></div>
         <div id="rym-lists-starred"></div>
@@ -3349,12 +3464,211 @@ se|Northern Sami|Davvisámegiella|
     renderListsSection();
   }
 
+  // ---- F2: lists by compatible users ----
+  let compatListsRun = null; // { handle, done, total }
+  let compatListsBlockedUser = null;
+  let compatListsMessage = "";
+  let compatModalEl = null;
+  let compatModalRunning = null; // { handle, done, total } for "Rate N unrated"
+
+  function staleCompatUsers() {
+    const users = selectCompatUsers(compat, settings).map(user => user.username);
+    const cache = listCache.compatLists || {};
+    return users.filter(name => !isCompatListsFresh(cache[name.toLowerCase()], Date.now()));
+  }
+
+  function updateCompatListsButton() {
+    const btn = $("rym-lists-compat");
+    if (!btn) return;
+    btn.disabled = false;
+    btn.title = "";
+    if (!compat) {
+      btn.textContent = "Lists by compatible users";
+      btn.disabled = true;
+      btn.title = "Sync compatible users first";
+    } else if (compatListsRun) {
+      btn.textContent = `Fetching ${Math.min(compatListsRun.done + 1, compatListsRun.total)}/${compatListsRun.total}… · Stop`;
+      btn.title = "Stop fetching";
+    } else if (compatListsBlockedUser && staleCompatUsers().some(name => name.toLowerCase() === compatListsBlockedUser.toLowerCase())) {
+      btn.textContent = `Open ${compatListsBlockedUser}'s lists`;
+      btn.title = "RYM blocked the fetch; open the page and the script will save it";
+    } else {
+      compatListsBlockedUser = null;
+      btn.textContent = "Lists by compatible users";
+    }
+  }
+
+  function onCompatListsClick() {
+    if (!compat) return;
+    if (compatListsRun) {
+      compatListsRun.handle && compatListsRun.handle.stop();
+      return;
+    }
+    if (compatListsBlockedUser) {
+      const user = compatListsBlockedUser;
+      if (staleCompatUsers().some(name => name.toLowerCase() === user.toLowerCase())) {
+        window.open(`/list/${encodeURIComponent(user)}/`, "_blank", "noopener,noreferrer");
+        return;
+      }
+      compatListsBlockedUser = null;
+    }
+    const stale = staleCompatUsers().slice(0, COMPAT_LISTS_MAX_USERS);
+    compatListsMessage = "";
+    if (stale.length === 0) {
+      openCompatModal();
+      return;
+    }
+    compatListsRun = { handle: null, done: 0, total: stale.length };
+    compatListsRun.handle = fetchUserListsSequentially(stale, {
+      onEach() {
+        if (compatListsRun) compatListsRun.done++;
+        updateCompatListsButton();
+      },
+      onDone(summary) {
+        compatListsRun = null;
+        if (summary.busy) {
+          compatListsMessage = "Another fetch is already running.";
+        } else if (summary.blocked) {
+          if (summary.fetched === 0) compatListsBlockedUser = summary.blockedUser;
+          else compatListsMessage = `RYM blocked the fetch at ${summary.blockedUser}; open their lists page to save it.`;
+        }
+        updateCompatListsButton();
+        if (!summary.busy && summary.fetched > 0) openCompatModal();
+        else if (summary.busy) toast(compatListsMessage);
+      }
+    });
+    updateCompatListsButton();
+  }
+
+  function compatDisplayEntries() {
+    const out = [];
+    const seen = new Set();
+    for (const data of Object.values(listCache.compatLists || {})) {
+      for (const item of (data && data.lists) || []) {
+        if (!item || !item.key || seen.has(item.key)) continue;
+        seen.add(item.key);
+        const cached = listCache.lists[item.key];
+        const merged = { ...item };
+        if (cached) {
+          for (const field of ["title", "likes", "items", "categories", "override", "fetchedAt"]) {
+            if (cached[field] !== undefined && cached[field] !== null && cached[field] !== "") merged[field] = cached[field];
+          }
+        }
+        merged.cls = classifyList(merged);
+        merged.fresh = isListEntryFresh(cached, Date.now());
+        out.push(merged);
+      }
+    }
+    return out;
+  }
+
+  function closeCompatModal() {
+    if (compatModalEl) compatModalEl.remove();
+    compatModalEl = null;
+    document.removeEventListener("keydown", onCompatModalKey, true);
+  }
+
+  function onCompatModalKey(event) {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      closeCompatModal();
+    }
+  }
+
+  function openCompatModal() {
+    if (!compatModalEl) {
+      compatModalEl = document.createElement("div");
+      compatModalEl.id = "rym-lists-modal";
+      compatModalEl.addEventListener("click", event => {
+        if (event.target === compatModalEl) closeCompatModal();
+      });
+      document.body.appendChild(compatModalEl);
+      document.addEventListener("keydown", onCompatModalKey, true);
+    }
+    renderCompatModal();
+  }
+
+  function renderCompatModal() {
+    if (!compatModalEl) return;
+    compatModalEl.textContent = "";
+    const box = listsEl("div", "rym-lists-modal-box");
+    compatModalEl.appendChild(box);
+
+    const all = compatDisplayEntries();
+    const compatUsers = new Set((listCache.compatLists ? Object.keys(listCache.compatLists) : []).map(name => name.toLowerCase()));
+    const starredKeys = new Set(starred.lists.map(item => item.key));
+    const curated = sortListsByScore(all.filter(e => e.cls.cls === "curated"), { compatUsers, starred: starredKeys });
+    const unrated = all.filter(e => e.cls.cls === "unknown");
+    const logs = all.filter(e => e.cls.cls === "log" || e.cls.cls === "other");
+
+    const head = listsEl("div", "rym-lists-head");
+    head.appendChild(listsEl("span", "rym-lists-title", `Lists by compatible users · ${all.length}`));
+    const needFetch = all.filter(e => !e.fresh);
+    if (compatModalRunning) {
+      const btn = listsEl("button", "rym-lists-btn", `Rating ${Math.min(compatModalRunning.done + 1, compatModalRunning.total)}/${compatModalRunning.total}…`);
+      btn.type = "button";
+      btn.disabled = true;
+      head.appendChild(btn);
+      const stop = listsEl("button", "rym-lists-btn", "Stop");
+      stop.type = "button";
+      stop.addEventListener("click", () => compatModalRunning && compatModalRunning.handle && compatModalRunning.handle.stop());
+      head.appendChild(stop);
+    } else if (needFetch.length) {
+      const n = Math.min(needFetch.length, settings.listFetchMax);
+      const secs = Math.ceil(n * settings.listFetchDelayMs / 1000);
+      const btn = listsEl("button", "rym-lists-btn", `Rate ${needFetch.length} unrated (~${secs}s)`);
+      btn.type = "button";
+      btn.addEventListener("click", () => startCompatModalRate(needFetch.map(e => e.url)));
+      head.appendChild(btn);
+    }
+    const close = listsEl("button", "rym-lists-btn rym-lists-close", "×");
+    close.type = "button";
+    close.title = "Close";
+    close.addEventListener("click", closeCompatModal);
+    head.appendChild(close);
+    box.appendChild(head);
+
+    if (compatListsMessage) box.appendChild(listsEl("div", "rym-lists-status", compatListsMessage));
+
+    const addGroup = (label, rows) => {
+      box.appendChild(listsEl("div", "rym-lists-sub", `${label} (${rows.length})`));
+      if (rows.length === 0) box.appendChild(listsEl("div", "rym-lists-empty", "Nothing here."));
+      rows.forEach(e => box.appendChild(buildListRow(e, compatUsers)));
+    };
+    addGroup("Curated", curated);
+    addGroup("Unrated", unrated);
+    addGroup("Logs & other", logs);
+  }
+
+  function startCompatModalRate(urls) {
+    if (compatModalRunning || urls.length === 0) return;
+    compatListsMessage = "";
+    compatModalRunning = { handle: null, done: 0, total: Math.min(urls.length, settings.listFetchMax) };
+    compatModalRunning.handle = fetchListsSequentially(urls, {
+      onEach() {
+        if (compatModalRunning) compatModalRunning.done++;
+        renderCompatModal();
+      },
+      onDone(summary) {
+        compatModalRunning = null;
+        if (summary.blocked) compatListsMessage = "RYM blocked the fetch; open lists manually, they get rated as you visit them.";
+        else if (summary.busy) compatListsMessage = "Another fetch is already running.";
+        renderCompatModal();
+      }
+    });
+    renderCompatModal();
+  }
+
+  $("rym-lists-compat").addEventListener("click", onCompatListsClick);
+
   function renderListsSection() {
     const currentEl = $("rym-lists-current");
     const starredEl = $("rym-lists-starred");
     currentEl.textContent = "";
     starredEl.textContent = "";
 
+    updateCompatListsButton();
+    renderCompatModal();
     const findBtn = $("rym-lists-find");
     $("rym-lists-actions").classList.toggle("rym-picker-hidden", PAGE !== "release" && PAGE !== "chart");
     const findUrl = buildListSearchUrl(state, settings);
