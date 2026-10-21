@@ -90,7 +90,7 @@ assert.deepEqual(api.sortListsByScore([l1, l2, l3], listCtx).map(l => l.key), [l
 **Files:**
 - Modify: `rym-chart-picker-plus.user.js` (pure block; DOM parsers go next to `parseCompatDocument`)
 - Test: `test/pure.test.js`
-- Fixtures already present: `test/fixtures/list/index.html`, `test/fixtures/user_lists/index.html`
+- Fixtures already present: `test/fixtures/list/adontomas/listening-log-2026/index.html`, `test/fixtures/list/adontomas/index.html`
 
 **Interfaces:**
 - Produces (pure, string-only, exported):
@@ -195,7 +195,7 @@ assert.ok(prunedBig.lists[`/list/u/${api.LIST_CACHE_MAX}/`]);
 - [ ] **Step 2: Run** → FAIL.
 - [ ] **Step 3: Implement** pure helpers (export) and runtime pieces. In the `PAGE === "list"` branch call `captureListFromCurrentPage()` **before** the panel is built (the panel still builds; Task 5 decides what it shows). Add the `@match` lines.
 - [ ] **Step 4: Run** `node test/pure.test.js` → PASS.
-- [ ] **Step 5: Smoke test** the list fixture: `cd test/fixtures && cp ../../rym-chart-picker-plus.user.js script.js && python3 -m http.server 8765`; add `<script src="/stub.js"></script><script src="/script.js"></script>` before `</body>` in `test/fixtures/list/index.html`; open `http://localhost:8765/list/`; in the console `JSON.parse(window.__store.rym_chart_picker_lists_v1)` must contain key `/list/adontomas/listening-log-2026/` with `categories: ["Listener's Diary"]`, `likes: 1`, `items: 369`, `id: 1547652`; `window.__errors` empty. Remove `script.js`. (Use the T3 `preview_*` tools or Playwright for this; if no browser is available, say so in the report.)
+- [ ] **Step 5: Smoke test** the list fixture: `cd test/fixtures && cp ../../rym-chart-picker-plus.user.js script.js && python3 -m http.server 8765`; add `<script src="/stub.js"></script><script src="/script.js"></script>` before `</body>` in `test/fixtures/list/adontomas/listening-log-2026/index.html`; open `http://localhost:8765/list/adontomas/listening-log-2026/`; in the console `JSON.parse(window.__store.rym_chart_picker_lists_v1)` must contain key `/list/adontomas/listening-log-2026/` with `categories: ["Listener's Diary"]`, `likes: 1`, `items: 369`, `id: 1547652`; `window.__errors` empty. Remove `script.js`. (Use the T3 `preview_*` tools or Playwright for this; if no browser is available, say so in the report.)
 - [ ] **Step 6: Commit** `feat(lists): caché de listas, favoritas, modo página de lista y fetch secuencial`.
 
 ---
@@ -231,7 +231,7 @@ assert.ok(prunedBig.lists[`/list/u/${api.LIST_CACHE_MAX}/`]);
 - On `PAGE === "list"`: the genre/year/type/language/users rows, the `Open chart` button, the URL preview and the Chart Search toggle are hidden (`rym-picker-hidden`); main button text `Chart Picker+: lists`; status `Viewing a list`.
 
 - [ ] **Step 1: Implement** as above. Keep `render()` safe on list pages: every `$("…")` the function touches must exist in the template (do not remove template nodes; hide them).
-- [ ] **Step 2: Smoke test** `http://localhost:8765/list/`: panel shows title `listening log 2026`, chip `Diary`, `♥ 1`, `369 items`; star it → `window.__store.rym_chart_picker_starred_lists_v1` contains it; open `/release/album/ecco2k/e/` → panel Starred block lists it; unstar from there → gone. `window.__errors` empty on both pages and on `/charts/top/…` fixture.
+- [ ] **Step 2: Smoke test** `http://localhost:8765/list/adontomas/listening-log-2026/`: panel shows title `listening log 2026`, chip `Diary`, `♥ 1`, `369 items`; star it → `window.__store.rym_chart_picker_starred_lists_v1` contains it; open `/release/album/ecco2k/e/` → panel Starred block lists it; unstar from there → gone. `window.__errors` empty on both pages and on `/charts/top/…` fixture.
 - [ ] **Step 3: Commit** `feat(lists): panel en página de lista y listas favoritas`.
 
 ---
@@ -261,7 +261,7 @@ assert.ok(prunedBig.lists[`/list/u/${api.LIST_CACHE_MAX}/`]);
 - Produces: in `#rym-picker-lists` on release/chart pages a button `Lists by compatible users` (disabled with title `Sync compatible users first` when `!compat`); clicking fetches stale users then opens a modal `#rym-lists-modal` (fixed, centered, closable with `×`/Esc) listing all cached compat lists grouped Curated / Unrated / Logs & other, each row as in Task 4 (author shown, `Rate N unrated` button reusing `fetchListsSequentially`). On `blocked` at the first user: the button turns into `Open <user>'s lists` which opens `/list/<user>/` in a new tab; when `PAGE` detection sees `/list/<user>/` (index page, 2 segments), the script calls `captureUserListsFromCurrentPage()` → `parseUserListsDocument(document)` → store under `compatLists[user]` → toast `Saved N lists by <user>.` and returns (no panel). Add `"userlists"` to `PAGE` detection for `/^\/list\/[^/]+\/?$/`.
 
 - [ ] **Step 1: Implement.**
-- [ ] **Step 2: Smoke test**: add `<script src="/stub.js"></script><script src="/script.js"></script>` to `test/fixtures/user_lists/index.html`; open `http://localhost:8765/user_lists/` → store contains `compatLists.adontomas` with 5 lists and `items` parsed; on the release fixture with a stubbed `compat` in `window.__store` (`rym_chart_picker_compat_v1` = `{"users":[{"username":"adontomas","score":100,"rank":1}],"forUser":"alonsoreyna","syncedAt":<now>}`), the button opens the modal and shows the 5 lists, `listening log 2026` under Logs with `log?` (or `Diary` if cached). `window.__errors` empty.
+- [ ] **Step 2: Smoke test**: add `<script src="/stub.js"></script><script src="/script.js"></script>` to `test/fixtures/list/adontomas/index.html`; open `http://localhost:8765/list/adontomas/` → store contains `compatLists.adontomas` with 5 lists and `items` parsed; on the release fixture with a stubbed `compat` in `window.__store` (`rym_chart_picker_compat_v1` = `{"users":[{"username":"adontomas","score":100,"rank":1}],"forUser":"alonsoreyna","syncedAt":<now>}`), the button opens the modal and shows the 5 lists, `listening log 2026` under Logs with `log?` (or `Diary` if cached). `window.__errors` empty.
 - [ ] **Step 3: Commit** `feat(lists): listas de usuarios compatibles`.
 
 ---
@@ -269,7 +269,7 @@ assert.ok(prunedBig.lists[`/list/u/${api.LIST_CACHE_MAX}/`]);
 ### Task 8: Docs, version, fixtures hygiene
 
 **Files:**
-- Modify: `rym-chart-picker-plus.user.js` (`@version 1.3.0`), `TUTORIAL.md`, `CLAUDE.md`, `brainstorms/2026-10-21-rym-chart-picker-lists.md` (estado), `test/fixtures/list/index.html` and `test/fixtures/user_lists/index.html` (keep the script tags, like the other fixtures)
+- Modify: `rym-chart-picker-plus.user.js` (`@version 1.3.0`), `TUTORIAL.md`, `CLAUDE.md`, `brainstorms/2026-10-21-rym-chart-picker-lists.md` (estado), `test/fixtures/list/adontomas/listening-log-2026/index.html` and `test/fixtures/list/adontomas/index.html` (keep the script tags, like the other fixtures)
 
 - [ ] **Step 1:** Bump `@version` to `1.3.0`.
 - [ ] **Step 2:** `TUTORIAL.md`: new section "Listas" (pestañas en el release, botón Rate y qué pasa si RYM bloquea, estrella y favoritas, Find lists, Lists by compatible users, overrides, settings nuevos). Spanish.
