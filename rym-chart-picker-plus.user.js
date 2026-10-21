@@ -1240,8 +1240,11 @@ se|Northern Sami|Davvisámegiella|
   }
 
   function setListOverride(key, cls) {
-    const entry = listCache.lists[key];
-    if (!entry) return;
+    let entry = listCache.lists[key];
+    if (!entry) {
+      if (!cls) return;
+      entry = listCache.lists[key] = { key };
+    }
     if (cls) entry.override = cls;
     else delete entry.override;
     saveListCache();
@@ -1676,6 +1679,32 @@ se|Northern Sami|Davvisámegiella|
     .rym-picker-hidden { display: none !important; }
     .rym-picker-detected { color: var(--rym-muted); font-size: 12px; margin-top: 5px; }
     .rym-picker-default-chip-row { margin-top: 7px; }
+
+    .rym-lists-native-hidden { display: none !important; }
+    #rym-lists-wrap { margin: 8px 0 14px; font-size: 13px; line-height: 1.35; }
+    #rym-lists-wrap .rym-lists-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
+    #rym-lists-wrap .rym-lists-title { font-weight: 700; font-size: 15px; }
+    #rym-lists-wrap .rym-lists-tab, #rym-lists-wrap .rym-lists-btn {
+      border: 1px solid rgba(128,128,128,.5); background: transparent; color: inherit; border-radius: 3px;
+      padding: 2px 8px; font: inherit; cursor: pointer;
+    }
+    #rym-lists-wrap .rym-lists-tab.rym-lists-tab-on { background: #1676d2; border-color: #1676d2; color: #fff; }
+    #rym-lists-wrap .rym-lists-link { margin-left: auto; cursor: pointer; text-decoration: underline; opacity: .8; }
+    #rym-lists-wrap .rym-lists-status { opacity: .8; margin-bottom: 6px; }
+    #rym-lists-wrap .rym-lists-sub { font-weight: 700; margin: 8px 0 2px; opacity: .8; }
+    #rym-lists-wrap .rym-lists-empty { opacity: .6; padding: 6px 0; }
+    #rym-lists-wrap .rym-lists-row {
+      display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid rgba(128,128,128,.25);
+    }
+    #rym-lists-wrap .rym-lists-cover { width: 36px; height: 36px; flex: none; background: rgba(128,128,128,.25); object-fit: cover; }
+    #rym-lists-wrap .rym-lists-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    #rym-lists-wrap .rym-lists-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; justify-content: flex-end; }
+    #rym-lists-wrap .rym-lists-chip { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(128,128,128,.5); white-space: nowrap; }
+    #rym-lists-wrap .rym-chip-log { background: #b3261e; border-color: #b3261e; color: #fff; }
+    #rym-lists-wrap .rym-chip-curated { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+    #rym-lists-wrap .rym-chip-other { background: #777; border-color: #777; color: #fff; }
+    #rym-lists-wrap .rym-lists-star { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; padding: 0 2px; }
+    #rym-lists-wrap select { font-size: 11px; max-width: 80px; }
   `);
 
   // ---------------------------------------------------------------------------
@@ -2320,6 +2349,7 @@ se|Northern Sami|Davvisámegiella|
     renderSet("rym-picker-desc", state.descriptors, "descriptors");
     renderLanguageSet();
     renderUsersChip();
+    if (PAGE === "release") renderReleaseLists();
 
     document.querySelectorAll("[data-listing-mode]").forEach(input => {
       input.checked = settings.listingMode === input.dataset.listingMode;
@@ -3127,6 +3157,245 @@ se|Northern Sami|Davvisámegiella|
       case "language":
         toggleSetValue(state.languages, picked.value);
         break;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Release lists section (F1): own tabbed view next to RYM's native block
+  // ---------------------------------------------------------------------------
+
+  let releaseLists = null;
+  let listsWrap = null;
+  let listsRun = null; // { handle, done, total }
+  let listsMessage = "";
+  state.listsTab = null;
+  state.listsShowNative = false;
+
+  if (PAGE === "release") {
+    try {
+      releaseLists = parseReleaseListsSection(document);
+    } catch (error) {
+      console.warn("[RYM Chart Picker+] Could not parse the lists section:", error);
+      releaseLists = null;
+    }
+  }
+
+  function listsDisplayEntries() {
+    return releaseLists.entries.map(page => {
+      const cached = listCache.lists[page.key];
+      const merged = { ...page };
+      if (cached) {
+        for (const field of ["title", "likes", "items", "categories", "override", "fetchedAt"]) {
+          if (cached[field] !== undefined && cached[field] !== null && cached[field] !== "") merged[field] = cached[field];
+        }
+      }
+      merged.cls = classifyList(merged);
+      merged.fresh = isListEntryFresh(cached, Date.now());
+      return merged;
+    });
+  }
+
+  function listsEl(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+
+  function startListsRate(keys) {
+    if (listsRun || keys.length === 0) return;
+    const total = Math.min(keys.length, settings.listFetchMax);
+    listsMessage = "";
+    listsRun = { handle: null, done: 0, total };
+    listsRun.handle = fetchListsSequentially(keys, {
+      onEach() {
+        if (listsRun) listsRun.done++;
+        renderReleaseLists();
+      },
+      onDone(summary) {
+        listsRun = null;
+        if (summary.blocked) listsMessage = "RYM blocked the fetch; open lists manually, they get rated as you visit them.";
+        else if (summary.busy) listsMessage = "Another fetch is already running.";
+        renderReleaseLists();
+      }
+    });
+    renderReleaseLists();
+  }
+
+  function buildListRow(entry, compatUsers) {
+    const row = listsEl("div", "rym-lists-row");
+    if (entry.cover) {
+      const img = listsEl("img", "rym-lists-cover");
+      img.src = entry.cover;
+      img.alt = "";
+      row.appendChild(img);
+    } else {
+      row.appendChild(listsEl("div", "rym-lists-cover"));
+    }
+
+    const main = listsEl("div", "rym-lists-main");
+    const title = listsEl("a", "", entry.title);
+    title.href = entry.url;
+    main.appendChild(title);
+    main.appendChild(document.createTextNode(" "));
+    const author = listsEl("a", "", entry.author);
+    author.href = `/~${entry.author}`;
+    main.appendChild(author);
+    row.appendChild(main);
+
+    const meta = listsEl("div", "rym-lists-meta");
+    const { cls, provisional } = entry.cls;
+    if (cls === "unknown") {
+      meta.appendChild(listsEl("span", "rym-lists-chip rym-chip-other", "unrated"));
+    } else {
+      let label = Array.isArray(entry.categories) && entry.categories[0] ? String(entry.categories[0]) : cls;
+      if (cls === "log" && /^listener'?s diary$/i.test(label)) label = "Diary";
+      if (provisional) label = "log?";
+      meta.appendChild(listsEl("span", `rym-lists-chip rym-chip-${cls}`, label));
+    }
+    if (entry.fetchedAt && entry.likes !== undefined) meta.appendChild(listsEl("span", "rym-lists-chip", `♥ ${entry.likes}`));
+    if (entry.items) meta.appendChild(listsEl("span", "rym-lists-chip", `${entry.items} items`));
+    if (compatUsers.has(String(entry.author).toLowerCase())) meta.appendChild(listsEl("span", "rym-lists-chip", "compat"));
+
+    const star = listsEl("button", "rym-lists-star", isStarred(entry.key) ? "★" : "☆");
+    star.type = "button";
+    star.title = "Star this list";
+    star.addEventListener("click", () => {
+      toggleStarred(entry);
+      renderReleaseLists();
+    });
+    meta.appendChild(star);
+
+    const select = document.createElement("select");
+    select.title = "Classification";
+    const current = listCache.lists[entry.key] && listCache.lists[entry.key].override || "auto";
+    for (const value of ["auto", "curated", "log", "other"]) {
+      const option = listsEl("option", "", value);
+      option.value = value;
+      option.selected = value === current;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", () => {
+      setListOverride(entry.key, select.value === "auto" ? null : select.value);
+      renderReleaseLists();
+    });
+    meta.appendChild(select);
+    row.appendChild(meta);
+    return row;
+  }
+
+  function renderReleaseLists() {
+    if (PAGE !== "release" || !releaseLists || !releaseLists.container) return;
+    try {
+      const container = releaseLists.container;
+      if (!container.parentNode) return;
+      if (!listsWrap || !listsWrap.isConnected) {
+        listsWrap = document.createElement("div");
+        listsWrap.id = "rym-lists-wrap";
+        container.parentNode.insertBefore(listsWrap, container);
+      }
+      container.classList.toggle("rym-lists-native-hidden", !state.listsShowNative);
+      listsWrap.style.display = state.listsShowNative ? "none" : "";
+
+      let view = document.getElementById("rym-lists-view");
+      if (!view) {
+        view = document.createElement("div");
+        view.id = "rym-lists-view";
+        listsWrap.appendChild(view);
+      }
+      view.textContent = "";
+
+      let compatUsers = new Set();
+      try {
+        compatUsers = new Set(selectCompatUsers(compat, settings).map(user => user.username.toLowerCase()));
+      } catch {}
+      const starredKeys = new Set(starred.lists.map(item => item.key));
+      const all = listsDisplayEntries();
+      const curated = sortListsByScore(all.filter(e => e.cls.cls === "curated"), { compatUsers, starred: starredKeys });
+      const unrated = all.filter(e => e.cls.cls === "unknown");
+      const logs = all.filter(e => e.cls.cls === "log");
+      const others = all.filter(e => e.cls.cls === "other");
+      const tabs = [
+        { id: "curated", label: `Curated (${curated.length})` },
+        { id: "unrated", label: `Unrated (${unrated.length})` },
+        { id: "logs", label: `Logs & other (${logs.length + others.length})` },
+        { id: "all", label: "All" }
+      ];
+      if (!tabs.some(t => t.id === state.listsTab)) {
+        state.listsTab = curated.length ? "curated" : unrated.length ? "unrated" : "all";
+      }
+
+      const head = listsEl("div", "rym-lists-head");
+      head.appendChild(listsEl("span", "rym-lists-title", `Lists · ${all.length}`));
+      for (const tab of tabs) {
+        const btn = listsEl("button", `rym-lists-tab${tab.id === state.listsTab ? " rym-lists-tab-on" : ""}`, tab.label);
+        btn.type = "button";
+        btn.addEventListener("click", () => {
+          state.listsTab = tab.id;
+          renderReleaseLists();
+        });
+        head.appendChild(btn);
+      }
+
+      const needFetch = all.filter(e => !e.fresh);
+      if (listsRun) {
+        const btn = listsEl("button", "rym-lists-btn", `Rating ${Math.min(listsRun.done + 1, listsRun.total)}/${listsRun.total}…`);
+        btn.type = "button";
+        btn.disabled = true;
+        head.appendChild(btn);
+        const stop = listsEl("button", "rym-lists-btn", "Stop");
+        stop.type = "button";
+        stop.addEventListener("click", () => listsRun && listsRun.handle && listsRun.handle.stop());
+        head.appendChild(stop);
+      } else if (needFetch.length) {
+        const n = Math.min(needFetch.length, settings.listFetchMax);
+        const secs = Math.ceil(n * settings.listFetchDelayMs / 1000);
+        const btn = listsEl("button", "rym-lists-btn", `Rate ${needFetch.length} unrated (~${secs}s)`);
+        btn.type = "button";
+        btn.addEventListener("click", () => startListsRate(needFetch.map(e => e.url)));
+        head.appendChild(btn);
+      }
+
+      const toggle = listsEl("a", "rym-lists-link", "Show RYM's view");
+      toggle.addEventListener("click", () => {
+        state.listsShowNative = true;
+        renderReleaseLists();
+      });
+      head.appendChild(toggle);
+      view.appendChild(head);
+
+      if (listsMessage) view.appendChild(listsEl("div", "rym-lists-status", listsMessage));
+
+      const addRows = rows => rows.forEach(e => view.appendChild(buildListRow(e, compatUsers)));
+      const tab = state.listsTab;
+      if (tab === "curated") addRows(curated);
+      else if (tab === "unrated") addRows(unrated);
+      else if (tab === "logs") {
+        addRows(logs);
+        if (others.length) {
+          view.appendChild(listsEl("div", "rym-lists-sub", "Other"));
+          addRows(others);
+        }
+      } else addRows(all);
+      if (!view.querySelector(".rym-lists-row")) view.appendChild(listsEl("div", "rym-lists-empty", "Nothing here."));
+
+      if (state.listsShowNative) {
+        // The wrapper is hidden while RYM's view is shown, so keep a way back next to the native block.
+        listsWrap.style.display = "";
+        view.textContent = "";
+        const back = listsEl("a", "rym-lists-link", "Show Chart Picker+ view");
+        back.style.marginLeft = "0";
+        back.addEventListener("click", () => {
+          state.listsShowNative = false;
+          renderReleaseLists();
+        });
+        view.appendChild(back);
+      }
+    } catch (error) {
+      console.warn("[RYM Chart Picker+] Lists view failed; leaving RYM's section visible:", error);
+      if (releaseLists && releaseLists.container) releaseLists.container.classList.remove("rym-lists-native-hidden");
+      if (listsWrap) listsWrap.remove();
+      listsWrap = null;
     }
   }
 
