@@ -177,4 +177,23 @@ assert.equal(api.buildListSearchUrl(api.createState(), searchSettings), null);
 assert.equal(api.normalizeSettings({ listFetchMax: 500, listFetchDelayMs: 10 }).listFetchMax, 100);
 assert.equal(api.normalizeSettings({ listFetchMax: 500, listFetchDelayMs: 10 }).listFetchDelayMs, 1000);
 
+// lists: cache pruning
+const now = Date.now();
+const old = now - 40 * 24 * 3600 * 1000;
+const cache = { version: 1, lists: {
+  "/list/a/x/": { key: "/list/a/x/", fetchedAt: old },
+  "/list/a/y/": { key: "/list/a/y/", fetchedAt: old, override: "log" },
+  "/list/a/z/": { key: "/list/a/z/", fetchedAt: old },
+  "/list/a/w/": { key: "/list/a/w/", fetchedAt: now }
+} };
+const pruned = api.pruneListCache(cache, new Set(["/list/a/z/"]), now);
+assert.deepEqual(Object.keys(pruned.lists).sort(), ["/list/a/w/", "/list/a/y/", "/list/a/z/"]);
+assert.equal(api.isListEntryFresh({ fetchedAt: old }, now), false);
+assert.equal(api.isListEntryFresh({ fetchedAt: old, override: "log" }, now), true);
+const big = { version: 1, lists: {} };
+for (let i = 0; i < api.LIST_CACHE_MAX + 1; i++) big.lists[`/list/u/${i}/`] = { key: `/list/u/${i}/`, fetchedAt: now - i };
+const prunedBig = api.pruneListCache(big, new Set([`/list/u/${api.LIST_CACHE_MAX}/`]), now);
+assert.equal(Object.keys(prunedBig.lists).length, api.LIST_CACHE_MAX);
+assert.ok(prunedBig.lists[`/list/u/${api.LIST_CACHE_MAX}/`]);
+
 console.log("all tests passed");

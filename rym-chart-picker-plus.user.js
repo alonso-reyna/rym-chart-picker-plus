@@ -14,6 +14,8 @@
 // @match        https://www.rateyourmusic.com/charts/*
 // @match        https://rateyourmusic.com/find_similar_users*
 // @match        https://www.rateyourmusic.com/find_similar_users*
+// @match        https://rateyourmusic.com/list/*
+// @match        https://www.rateyourmusic.com/list/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -1067,6 +1069,36 @@ se|Northern Sami|Davvisámegiella|
     return { container, entries };
   }
 
+  const LIST_CACHE_MAX = 3000;
+  const LIST_CACHE_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+
+  function isListEntryFresh(entry, now) {
+    if (!entry) return false;
+    if (entry.override) return true;
+    return Number.isFinite(entry.fetchedAt) && (now - entry.fetchedAt) <= LIST_CACHE_MAX_AGE_MS;
+  }
+
+  function pruneListCache(cache, starred, now) {
+    const keep = starred instanceof Set ? starred : new Set(starred || []);
+    const lists = {};
+    for (const [key, entry] of Object.entries((cache && cache.lists) || {})) {
+      if (keep.has(key) || isListEntryFresh(entry, now)) lists[key] = entry;
+    }
+    const keys = Object.keys(lists);
+    if (keys.length > LIST_CACHE_MAX) {
+      const droppable = keys
+        .filter(key => !keep.has(key) && !lists[key].override)
+        .sort((a, b) => (lists[a].fetchedAt || 0) - (lists[b].fetchedAt || 0));
+      let excess = keys.length - LIST_CACHE_MAX;
+      for (const key of droppable) {
+        if (excess <= 0) break;
+        delete lists[key];
+        excess--;
+      }
+    }
+    return { ...cache, lists };
+  }
+
   const PURE_API = {
     rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
@@ -1076,7 +1108,8 @@ se|Northern Sami|Davvisámegiella|
     LIST_LOG_CATEGORIES, LIST_OTHER_CATEGORIES, classifyListCategories, classifyListTitle,
     classifyList, scoreList, sortListsByScore,
     listPathKey, parseListIdText, parseLikesText, parseItemsFromNav, parseItemsFromMeta, buildListSearchUrl,
-    parseListDocument, parseUserListsDocument, parseReleaseListsSection
+    parseListDocument, parseUserListsDocument, parseReleaseListsSection,
+    LIST_CACHE_MAX, LIST_CACHE_MAX_AGE_MS, pruneListCache, isListEntryFresh
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -1092,6 +1125,7 @@ se|Northern Sami|Davvisámegiella|
   const PAGE = /^\/release\//.test(pathname) ? "release"
     : /^\/charts\//.test(pathname) ? "chart"
     : /^\/find_similar_users/.test(pathname) ? "compat"
+    : /^\/list\/[^/]+\/[^/]+/.test(pathname) ? "list"
     : null;
 
   if (!PAGE) return;
@@ -1155,6 +1189,169 @@ se|Northern Sami|Davvisámegiella|
     compat = { users, forUser, syncedAt: Date.now() };
     GM_setValue(COMPAT_KEY, JSON.stringify(compat));
   }
+
+  // ---------------------------------------------------------------------------
+  // Lists: cache, starred, capture, sequential fetch
+  // ---------------------------------------------------------------------------
+
+  const LISTS_KEY = "rym_chart_picker_lists_v1";
+  const STARRED_KEY = "rym_chart_picker_starred_lists_v1";
+  let listCache = loadListCache();
+  let starred = loadStarred();
+  let listFetching = false;
+
+  function loadListCache() {
+    try {
+      const parsed = readStored(LISTS_KEY);
+      if (parsed && typeof parsed === "object" && parsed.lists && typeof parsed.lists === "object") {
+        return { version: 1, lists: parsed.lists, compatLists: parsed.compatLists || {} };
+      }
+    } catch {}
+    return { version: 1, lists: {}, compatLists: {} };
+  }
+
+  function saveListCache() {
+    listCache = pruneListCache(listCache, new Set(starred.lists.map(item => item.key)), Date.now());
+    GM_setValue(LISTS_KEY, JSON.stringify(listCache));
+  }
+
+  function loadStarred() {
+    try {
+      const parsed = readStored(STARRED_KEY);
+      if (parsed && Array.isArray(parsed.lists)) {
+        return { version: 1, lists: parsed.lists.filter(item => item && item.key) };
+      }
+    } catch {}
+    return { version: 1, lists: [] };
+  }
+
+  function saveStarred() {
+    GM_setValue(STARRED_KEY, JSON.stringify(starred));
+  }
+
+  function upsertListEntry(entry) {
+    if (!entry || !entry.key) return null;
+    const existing = listCache.lists[entry.key];
+    const merged = { ...(existing || {}), ...entry, fetchedAt: Date.now() };
+    if (existing && existing.override) merged.override = existing.override;
+    listCache.lists[entry.key] = merged;
+    saveListCache();
+    return merged;
+  }
+
+  function setListOverride(key, cls) {
+    const entry = listCache.lists[key];
+    if (!entry) return;
+    if (cls) entry.override = cls;
+    else delete entry.override;
+    saveListCache();
+  }
+
+  function isStarred(key) {
+    return starred.lists.some(item => item.key === key);
+  }
+
+  function toggleStarred(entryLike) {
+    if (!entryLike || !entryLike.key) return false;
+    const index = starred.lists.findIndex(item => item.key === entryLike.key);
+    let nowStarred;
+    if (index >= 0) {
+      starred.lists.splice(index, 1);
+      nowStarred = false;
+    } else {
+      const { key, url, title, author, likes } = entryLike;
+      const item = { key, url, title, author, starredAt: Date.now() };
+      if (likes !== undefined) item.likes = likes;
+      starred.lists.push(item);
+      nowStarred = true;
+    }
+    saveStarred();
+    return nowStarred;
+  }
+
+  function captureListFromCurrentPage() {
+    const entry = parseListDocument(document, window.location.href);
+    if (entry) upsertListEntry(entry);
+  }
+
+  // Sequential, user-initiated only: never call this without a click behind it.
+  function fetchListsSequentially(keys, { onEach, onDone } = {}) {
+    const summary = { fetched: 0, blocked: false, stopped: false };
+    let stopRequested = false;
+    let timerId = null;
+    let wake = null;
+    const handle = {
+      stop() {
+        stopRequested = true;
+        if (timerId) clearTimeout(timerId);
+        if (wake) wake();
+      }
+    };
+
+    if (listFetching) {
+      if (onDone) onDone({ ...summary, busy: true });
+      return handle;
+    }
+    listFetching = true;
+
+    (async () => {
+      const queue = keys.slice(0, settings.listFetchMax);
+      try {
+        for (let i = 0; i < queue.length && !stopRequested; i++) {
+          const abort = new AbortController();
+          const timer = setTimeout(() => abort.abort(), 20000);
+          let entry = null;
+          try {
+            const response = await fetch(queue[i], { credentials: "include", signal: abort.signal });
+            if (response.ok) {
+              const html = await response.text();
+              entry = parseListDocument(new DOMParser().parseFromString(html, "text/html"), new URL(queue[i], window.location.origin).href);
+            }
+          } catch {
+            entry = null;
+          } finally {
+            clearTimeout(timer);
+          }
+          if (!entry) {
+            summary.blocked = true;
+            break;
+          }
+          const stored = upsertListEntry(entry);
+          summary.fetched++;
+          if (onEach) onEach(stored);
+          if (i < queue.length - 1 && !stopRequested) {
+            await new Promise(resolve => {
+              wake = resolve;
+              timerId = setTimeout(resolve, settings.listFetchDelayMs);
+            });
+            wake = null;
+            timerId = null;
+          }
+        }
+      } finally {
+        summary.stopped = stopRequested;
+        listFetching = false;
+        if (onDone) onDone(summary);
+      }
+    })();
+
+    return handle;
+  }
+
+  if (typeof GM_addValueChangeListener === "function") {
+    GM_addValueChangeListener(LISTS_KEY, (name, oldValue, newValue, remote) => {
+      if (!remote) return;
+      listCache = loadListCache();
+      render();
+    });
+    GM_addValueChangeListener(STARRED_KEY, (name, oldValue, newValue, remote) => {
+      if (!remote) return;
+      starred = loadStarred();
+      render();
+    });
+  }
+
+  if (PAGE === "list") captureListFromCurrentPage();
 
   function initChartState() {
     const { state: parsed, listing } = parseChartPath(pathname);
