@@ -492,6 +492,7 @@ se|Northern Sami|Davvisámegiella|
       urlUsers: null,
       // true when the state was parsed from a chart URL: stored defaults must not sneak in.
       fromUrl: false,
+      starredShowAll: false,
       extraSegments: []
     };
   }
@@ -1681,30 +1682,36 @@ se|Northern Sami|Davvisámegiella|
     .rym-picker-default-chip-row { margin-top: 7px; }
 
     .rym-lists-native-hidden { display: none !important; }
+    #rym-picker-lists { font-size: 13px; line-height: 1.35; }
+    #rym-picker-lists .rym-lists-block-title { font-weight: 700; margin: 4px 0; }
+    #rym-picker-lists .rym-lists-starred-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+    #rym-picker-lists .rym-lists-starred-item a { overflow-wrap: anywhere; }
+    #rym-picker-lists .rym-lists-unstar { visibility: hidden; border: 0; background: transparent; color: inherit; cursor: pointer; margin-left: auto; }
+    #rym-picker-lists .rym-lists-starred-item:hover .rym-lists-unstar { visibility: visible; }
     #rym-lists-wrap { margin: 8px 0 14px; font-size: 13px; line-height: 1.35; }
-    #rym-lists-wrap .rym-lists-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
-    #rym-lists-wrap .rym-lists-title { font-weight: 700; font-size: 15px; }
-    #rym-lists-wrap .rym-lists-tab, #rym-lists-wrap .rym-lists-btn {
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-title { font-weight: 700; font-size: 15px; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-tab, #rym-lists-wrap .rym-lists-btn {
       border: 1px solid rgba(128,128,128,.5); background: transparent; color: inherit; border-radius: 3px;
       padding: 2px 8px; font: inherit; cursor: pointer;
     }
-    #rym-lists-wrap .rym-lists-tab.rym-lists-tab-on { background: #1676d2; border-color: #1676d2; color: #fff; }
-    #rym-lists-wrap .rym-lists-link { margin-left: auto; cursor: pointer; text-decoration: underline; opacity: .8; }
-    #rym-lists-wrap .rym-lists-status { opacity: .8; margin-bottom: 6px; }
-    #rym-lists-wrap .rym-lists-sub { font-weight: 700; margin: 8px 0 2px; opacity: .8; }
-    #rym-lists-wrap .rym-lists-empty { opacity: .6; padding: 6px 0; }
-    #rym-lists-wrap .rym-lists-row {
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-tab.rym-lists-tab-on { background: #1676d2; border-color: #1676d2; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-link { margin-left: auto; cursor: pointer; text-decoration: underline; opacity: .8; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-status { opacity: .8; margin-bottom: 6px; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-sub { font-weight: 700; margin: 8px 0 2px; opacity: .8; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-empty { opacity: .6; padding: 6px 0; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-row {
       display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid rgba(128,128,128,.25);
     }
-    #rym-lists-wrap .rym-lists-cover { width: 36px; height: 36px; flex: none; background: rgba(128,128,128,.25); object-fit: cover; }
-    #rym-lists-wrap .rym-lists-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-    #rym-lists-wrap .rym-lists-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; justify-content: flex-end; }
-    #rym-lists-wrap .rym-lists-chip { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(128,128,128,.5); white-space: nowrap; }
-    #rym-lists-wrap .rym-chip-log { background: #b3261e; border-color: #b3261e; color: #fff; }
-    #rym-lists-wrap .rym-chip-curated { background: #2e7d32; border-color: #2e7d32; color: #fff; }
-    #rym-lists-wrap .rym-chip-other { background: #777; border-color: #777; color: #fff; }
-    #rym-lists-wrap .rym-lists-star { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; padding: 0 2px; }
-    #rym-lists-wrap select { font-size: 11px; max-width: 80px; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-cover { width: 36px; height: 36px; flex: none; background: rgba(128,128,128,.25); object-fit: cover; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; justify-content: flex-end; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-chip { padding: 0 6px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(128,128,128,.5); white-space: nowrap; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-chip-log { background: #b3261e; border-color: #b3261e; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-chip-curated { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-chip-other { background: #777; border-color: #777; color: #fff; }
+    :is(#rym-lists-wrap, #rym-picker-lists) .rym-lists-star { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; padding: 0 2px; }
+    :is(#rym-lists-wrap, #rym-picker-lists) select { font-size: 11px; max-width: 80px; }
   `);
 
   // ---------------------------------------------------------------------------
@@ -1782,6 +1789,12 @@ se|Northern Sami|Davvisámegiella|
           </select>
         </label>
         <div id="rym-picker-users"></div>
+      </div>
+
+      <div class="rym-picker-row" id="rym-picker-lists">
+        <span class="rym-picker-label">Lists</span>
+        <div id="rym-lists-current"></div>
+        <div id="rym-lists-starred"></div>
       </div>
 
       <div class="rym-picker-actions">
@@ -1994,7 +2007,7 @@ se|Northern Sami|Davvisámegiella|
   // ---------------------------------------------------------------------------
 
   mainButton.addEventListener("click", () => {
-    if (PAGE === "chart") {
+    if (PAGE === "chart" || PAGE === "list") {
       state.bodyOpen = !state.bodyOpen;
       state.settingsOpen = false;
       render();
@@ -2333,6 +2346,10 @@ se|Northern Sami|Davvisámegiella|
       mainButton.textContent = "Chart Picker+: edit this chart";
       mainButton.style.background = "var(--rym-blue)";
       $("rym-picker-status").textContent = "Editing current chart";
+    } else if (PAGE === "list") {
+      mainButton.textContent = "Chart Picker+: lists";
+      mainButton.style.background = "var(--rym-blue)";
+      $("rym-picker-status").textContent = "Viewing a list";
     } else {
       mainButton.textContent = state.active ? "Chart Search: ON" : "Chart Search: OFF";
       mainButton.style.background = state.active ? "var(--rym-blue-hover)" : "var(--rym-blue)";
@@ -2350,6 +2367,7 @@ se|Northern Sami|Davvisámegiella|
     renderLanguageSet();
     renderUsersChip();
     if (PAGE === "release") renderReleaseLists();
+    renderListsSection();
 
     document.querySelectorAll("[data-listing-mode]").forEach(input => {
       input.checked = settings.listingMode === input.dataset.listingMode;
@@ -2414,6 +2432,11 @@ se|Northern Sami|Davvisámegiella|
     }
 
     $("rym-picker-url").textContent = currentChartUrl();
+
+    if (PAGE === "list") {
+      panel.querySelectorAll(".rym-picker-row:not(#rym-picker-lists), .rym-picker-actions, #rym-picker-url")
+        .forEach(el => el.classList.add("rym-picker-hidden"));
+    }
 
     refreshPageHighlights();
   }
@@ -3262,7 +3285,7 @@ se|Northern Sami|Davvisámegiella|
     star.title = "Star this list";
     star.addEventListener("click", () => {
       toggleStarred(entry);
-      renderReleaseLists();
+      refreshListsUi();
     });
     meta.appendChild(star);
 
@@ -3277,11 +3300,66 @@ se|Northern Sami|Davvisámegiella|
     }
     select.addEventListener("change", () => {
       setListOverride(entry.key, select.value === "auto" ? null : select.value);
-      renderReleaseLists();
+      refreshListsUi();
     });
     meta.appendChild(select);
     row.appendChild(meta);
     return row;
+  }
+
+  function refreshListsUi() {
+    renderReleaseLists();
+    renderListsSection();
+  }
+
+  function renderListsSection() {
+    const currentEl = $("rym-lists-current");
+    const starredEl = $("rym-lists-starred");
+    currentEl.textContent = "";
+    starredEl.textContent = "";
+
+    if (PAGE === "list") {
+      const key = listPathKey(location.href);
+      const cached = key && listCache.lists[key];
+      currentEl.appendChild(listsEl("div", "rym-lists-block-title", "This list"));
+      if (cached) {
+        currentEl.appendChild(buildListRow(Object.assign({}, cached, { cls: classifyList(cached) }), new Set()));
+      } else {
+        currentEl.appendChild(listsEl("div", "rym-lists-empty", "This list could not be read."));
+      }
+    }
+
+    starredEl.appendChild(listsEl("div", "rym-lists-block-title", "Starred"));
+    const items = starred.lists;
+    if (items.length === 0) {
+      starredEl.appendChild(listsEl("div", "rym-lists-empty", "No starred lists yet"));
+      return;
+    }
+    const shown = state.starredShowAll ? items : items.slice(0, 10);
+    for (const item of shown) {
+      const rowEl = listsEl("div", "rym-lists-starred-item");
+      const link = listsEl("a", "", item.title);
+      link.href = item.url;
+      rowEl.appendChild(link);
+      rowEl.appendChild(listsEl("span", "", `· ${item.author}${item.likes !== undefined ? ` · ♥${item.likes}` : ""}`));
+      const unstar = listsEl("button", "rym-lists-unstar", "×");
+      unstar.type = "button";
+      unstar.title = "Unstar";
+      unstar.addEventListener("click", () => {
+        toggleStarred(item);
+        refreshListsUi();
+      });
+      rowEl.appendChild(unstar);
+      starredEl.appendChild(rowEl);
+    }
+    if (items.length > 10) {
+      const toggle = listsEl("a", "rym-lists-link", state.starredShowAll ? "show less" : `show all (${items.length})`);
+      toggle.addEventListener("click", () => {
+        state.starredShowAll = !state.starredShowAll;
+        renderListsSection();
+      });
+      starredEl.appendChild(toggle);
+    }
   }
 
   function renderReleaseLists() {
