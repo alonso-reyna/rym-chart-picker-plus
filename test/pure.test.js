@@ -143,6 +143,9 @@ assert.deepEqual(api.classifyList({ title: "listening log 2026" }), { cls: "log"
 assert.deepEqual(api.classifyList({ title: "Ranking EPs of 2024" }), { cls: "unknown", provisional: false });
 assert.deepEqual(api.classifyList({ title: "listening log 2026", categories: ["Best Of"], likes: 4, fetchedAt: 1 }), { cls: "curated", provisional: false });
 assert.deepEqual(api.classifyList({ title: "x", categories: ["Best Of"], likes: 4, fetchedAt: 1, override: "log" }), { cls: "log", provisional: false });
+assert.equal(api.classifyListTitle("Catalog of Dreams"), "unknown");
+assert.equal(api.classifyListTitle("Albumlog 2026"), "log");
+assert.deepEqual(api.classifyList({ title: "x", override: "weird" }), { cls: "unknown", provisional: false });
 // lists: scoring
 const listCtx = { compatUsers: new Set(["aaronnotaaron"]), starred: new Set(["/list/zoeysaxon/releases-of-2024-ranked/"]) };
 const l1 = { key: "/list/troutmask/canon/", title: "Canon", author: "troutmask", likes: 212 };

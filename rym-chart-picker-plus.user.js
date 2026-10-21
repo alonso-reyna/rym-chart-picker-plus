@@ -896,7 +896,7 @@ se|Northern Sami|Davvisámegiella|
   }
 
   const LIST_LOG_TITLE_PATTERNS = [
-    /log/i, /diary/i, /journal/i, /listening/i, /listened/i, /first listens?/i, /\b20\d\d\s*:/,
+    /\blogs?\b/i, /album\s*log/i, /diary/i, /journal/i, /listening/i, /listened/i, /first listens?/i, /\b20\d\d\s*:/,
     /^\W*$/, /w\.?i\.?p/i, /to listen/i, /backlog/i
   ];
 
@@ -907,7 +907,7 @@ se|Northern Sami|Davvisámegiella|
 
   function classifyList(entry) {
     const e = entry || {};
-    if (e.override) return { cls: e.override, provisional: false };
+    if (e.override === "curated" || e.override === "log" || e.override === "other") return { cls: e.override, provisional: false };
     if (e.fetchedAt) {
       return { cls: classifyListCategories(e.categories, e.likes == null ? null : e.likes), provisional: false };
     }
