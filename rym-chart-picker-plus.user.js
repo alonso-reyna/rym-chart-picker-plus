@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.3.0
+// @version      1.3.1
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -939,6 +939,10 @@ se|Northern Sami|Davvisámegiella|
   }
 
   // ---- Lists: keys, text parsers, search URL (pure) ----
+  // Href seguro para una entrada de caché/estrellas: siempre una ruta relativa /list/<user>/<slug>/.
+  function safeListHref(entry) {
+    return listPathKey(entry && (entry.key || entry.url)) || "#";
+  }
   function listPathKey(href) {
     let path = String(href || "");
     path = path.replace(/^[a-z]+:\/\/[^/]+/i, "").replace(/[?#].*$/, "");
@@ -1001,10 +1005,11 @@ se|Northern Sami|Davvisámegiella|
       const n = doc.querySelectorAll("#user_list td.number").length;
       items = n || null;
     }
+    const key = listPathKey(url);
     return {
-      key: listPathKey(url),
+      key,
       id,
-      url,
+      url: key || url,
       title: h1 ? h1.textContent.trim() : "",
       author: authorEl ? authorEl.textContent.trim() : "",
       categories: catEls.map(a => a.textContent.trim()),
@@ -1026,7 +1031,7 @@ se|Northern Sami|Davvisámegiella|
       const meta = cell ? cell.querySelector(".smallgray") : null;
       out.push({
         key,
-        url: href,
+        url: key,
         title: a.textContent.trim(),
         author: key.split("/")[2],
         items: meta ? parseItemsFromMeta(meta.textContent) : null
@@ -1108,7 +1113,7 @@ se|Northern Sami|Davvisámegiella|
       }
       entries.push({
         key,
-        url: titled.getAttribute("href"),
+        url: key,
         title: titled.textContent.trim(),
         author: author || key.split("/")[2],
         cover,
@@ -1243,7 +1248,7 @@ se|Northern Sami|Davvisámegiella|
     ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS,
     LIST_LOG_CATEGORIES, LIST_OTHER_CATEGORIES, classifyListCategories, classifyListTitle,
     classifyList, scoreList, sortListsByScore,
-    listPathKey, parseListIdText, parseLikesText, parseItemsFromNav, parseItemsFromMeta, buildListSearchUrl,
+    listPathKey, safeListHref, parseListIdText, parseLikesText, parseItemsFromNav, parseItemsFromMeta, buildListSearchUrl,
     parseListDocument, parseUserListsDocument, parseReleaseListsSection,
     LIST_CACHE_MAX, LIST_CACHE_MAX_AGE_MS, pruneListCache, isListEntryFresh,
     validOverride, resolveListEntry, sortStarred, mergeListCaches, mergeStarred, runFetchQueue, isListsExcludedNode
@@ -1450,7 +1455,8 @@ se|Northern Sami|Davvisámegiella|
     listFetching = true;
 
     (async () => {
-      const queue = keys.slice(0, settings.listFetchMax);
+      // Solo rutas canónicas del mismo origen: nunca se hace fetch de un href crudo.
+      const queue = keys.map(listPathKey).filter(Boolean).slice(0, settings.listFetchMax);
       try {
         const result = await runFetchQueue(queue, {
           async fetchOne(url) {
@@ -3554,7 +3560,7 @@ se|Northern Sami|Davvisámegiella|
 
     const main = listsEl("div", "rym-lists-main");
     const title = listsEl("a", "", entry.title);
-    title.href = entry.url;
+    title.href = safeListHref(entry);
     main.appendChild(title);
     main.appendChild(document.createTextNode(" "));
     const author = listsEl("a", "", entry.author);
@@ -3843,7 +3849,7 @@ se|Northern Sami|Davvisámegiella|
     for (const item of shown) {
       const rowEl = listsEl("div", "rym-lists-starred-item");
       const link = listsEl("a", "", item.title);
-      link.href = item.url;
+      link.href = safeListHref(item);
       rowEl.appendChild(link);
       rowEl.appendChild(listsEl("span", "", `· ${item.author}${item.likes !== undefined ? ` · ♥${item.likes}` : ""}`));
       const unstar = listsEl("button", "rym-lists-unstar", "×");

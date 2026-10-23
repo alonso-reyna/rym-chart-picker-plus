@@ -203,6 +203,11 @@ assert.equal(api.listPathKey("/list/U/slug/15"), "/list/u/slug/");
 assert.equal(api.listPathKey("/list/u/slug/extra/"), null);
 assert.equal(api.listPathKey("/list/u/"), null);
 assert.equal(api.listPathKey("/list/u/slug/2/3/"), null);
+// Hrefs externos nunca llegan a href= ni a fetch: siempre la ruta relativa canónica.
+assert.equal(api.safeListHref({ url: "https://evil.example/list/u/slug/" }), "/list/u/slug/");
+assert.equal(api.safeListHref({ key: "/list/u/slug/", url: "javascript:alert(1)" }), "/list/u/slug/");
+assert.equal(api.safeListHref({ url: "javascript:alert(1)" }), "#");
+assert.equal(api.safeListHref(null), "#");
 assert.equal(api.parseItemsFromNav("344 - 320 369 - 345 319 - 295 19 - 1"), 369);
 assert.equal(api.parseItemsFromNav("1,204 - 1,180 1,229 - 1,205"), 1229);
 assert.equal(api.parseItemsFromNav("1,204 - 1,180"), 1204);
