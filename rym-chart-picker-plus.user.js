@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.3.1
+// @version      1.3.2
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -335,7 +335,7 @@ se|Northern Sami|Davvisámegiella|
     compatMinScoreV2: true,
     compatIncludeMe: false,
     compatExcluded: [],
-    listSearchType: "l",
+    listSearchType: "s", // verificado 2026-10-22: RYMsearch.types → Lists = "s"
     listFetchDelayMs: 3000,
     listFetchMax: 25
   };
@@ -868,7 +868,8 @@ se|Northern Sami|Davvisámegiella|
       compatMinScoreV2: true,
       compatIncludeMe: parsed.compatIncludeMe === true,
       compatExcluded: arrayOf("compatExcluded"),
-      listSearchType: typeof parsed.listSearchType === "string" && parsed.listSearchType.trim() ? parsed.listSearchType.trim() : defaults.listSearchType,
+      // "l" fue el default (no verificado) de 1.3.0/1.3.1 y busca releases: migrar al tipo real de listas.
+      listSearchType: typeof parsed.listSearchType === "string" && parsed.listSearchType.trim() && parsed.listSearchType.trim() !== "l" ? parsed.listSearchType.trim() : defaults.listSearchType,
       listFetchDelayMs: intIn("listFetchDelayMs", 1000, 600000),
       listFetchMax: intIn("listFetchMax", 1, 100)
     };

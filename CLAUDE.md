@@ -48,8 +48,10 @@ Capturados del sitio real salvo lo marcado como no verificado.
 - Índice de listas de un usuario `/list/<user>/`: `table.mbgen` con filas `a.listpage_list` y `.smallgray`
   "Created: … | Updated: … | N items".
 - `/list_classifier/<Name>/` es plano, paginado y sin ranking (sin likes, sin filtro de género/año): inútil para descubrir.
-- `/search?searchterm=…&searchtype=l` devolvió discos, no listas: el tipo de búsqueda de listas **no está verificado**
-  (setting `List search type`).
+- Búsqueda de listas: `searchtype=s` (verificado 2026-10-22 leyendo `RYMsearch.types` en la página de búsqueda; `l` =
+  releases, `a` artistas, `z` canciones, `b` sellos, `h` géneros, `u` usuarios). El setting guardado `l` se migra a `s`.
+- **No sondear RYM con varias peticiones seguidas desde el navegador de T3**: comparte la IP de Alonso y el firewall la
+  bloqueó (2026-10-22, 13 fetch en ~10 s → "IP blocked" con formulario de desbloqueo). Máximo una navegación por consulta.
 - El markup de la sección de listas en la página de release **no está verificado** (Cloudflare bloqueó la captura).
   El parser se basa en anclas `/list/<user>/<slug>/`; el bloque del fixture es una suposición.
 - `fetch` repetido desde la página dispara Cloudflare (403/503) también con listas. Ver política abajo.

@@ -125,8 +125,8 @@ estrella suben en el orden y no se borran de la caché. Los likes/clasificación
 script se equivoca. Se recuerda y `auto` la devuelve al cálculo normal.
 
 **Find lists on RYM.** En el panel (sección Lists) abre en pestaña nueva una búsqueda de listas con los géneros
-primarios elegidos (sus nombres) más el chip de año (año, década o rango; se omite si es "all time"). Ojo: el tipo de búsqueda (`List search type` en ⚙) no está verificado; si abre discos en vez de listas,
-cámbialo ahí.
+primarios elegidos (sus nombres) más el chip de año (año, década o rango; se omite si es "all time"). Usa el tipo de
+búsqueda de listas de RYM (`searchtype=s`, configurable como `List search type` en ⚙).
 
 **Lists by compatible users.** Abre una ventana con las listas de tus compatibles (los del top N de settings),
 agrupadas en Curated / Unrated / Logs & other. "Rate N unrated" funciona igual que arriba; el botón
@@ -136,7 +136,7 @@ los usuarios que hoy salen en tu selección de compatibles (top N, exclusiones).
 
 **Settings nuevos (⚙, bloque Lists).**
 
-- **List search type**: valor de `searchtype` para buscar listas.
+- **List search type**: valor de `searchtype` para buscar listas (`s` = Lists en RYM).
 - **Delay between list fetches (ms)**: pausa entre listas (default 3000, mínimo 1000).
 - **Max lists per click**: tope por clic (default 25, máximo 100).
 
