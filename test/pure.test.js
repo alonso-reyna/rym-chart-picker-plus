@@ -397,4 +397,15 @@ assert.equal(api.parseReleaseListsSection(page2(...filler(60), noisy)), null);
   assert.deepEqual(api.mergeFilmGenreSlugs({ a: "a-1", b: "b-1" }, { b: "b-2" }), { a: "a-1", b: "b-2" });
 }
 
+// duckduckgo / letterboxd
+{
+  assert.equal(api.buildDuckyUrl("letterboxd.com/film", "Monster House", 2006),
+    "https://duckduckgo.com/?q=" + encodeURIComponent("\\site:letterboxd.com/film Monster House 2006"));
+  assert.equal(api.buildDuckyUrl("rateyourmusic.com/film", "Lilo & Stitch", null, false),
+    "https://duckduckgo.com/?q=" + encodeURIComponent("site:rateyourmusic.com/film Lilo & Stitch"));
+  assert.deepEqual(api.parseLetterboxdOgTitle("Monster House (2006)"), { title: "Monster House", year: 2006 });
+  assert.deepEqual(api.parseLetterboxdOgTitle("8½ (1963)"), { title: "8½", year: 1963 });
+  assert.deepEqual(api.parseLetterboxdOgTitle("Untitled"), { title: "Untitled", year: null });
+}
+
 console.log("all tests passed");
