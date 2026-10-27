@@ -10,6 +10,10 @@
 // @author       alonsoreyna (fork of Lin808)
 // @match        https://rateyourmusic.com/release/*
 // @match        https://www.rateyourmusic.com/release/*
+// @match        https://rateyourmusic.com/film/*
+// @match        https://www.rateyourmusic.com/film/*
+// @match        https://rateyourmusic.com/film_genre/*
+// @match        https://www.rateyourmusic.com/film_genre/*
 // @match        https://rateyourmusic.com/charts/*
 // @match        https://www.rateyourmusic.com/charts/*
 // @match        https://rateyourmusic.com/find_similar_users*
@@ -31,6 +35,8 @@
   // Same key as the original script so existing settings carry over.
   const STORAGE_KEY = "rym_chart_picker_settings_v16";
   const COMPAT_KEY = "rym_chart_picker_compat_v1";
+  const COMPAT_FILM_KEY = "rym_chart_picker_compat_film_v1";
+  const FILM_GENRES_KEY = "rym_chart_picker_film_genres_v1";
   const COMPAT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
   // ---------------------------------------------------------------------------
@@ -1352,7 +1358,9 @@ se|Northern Sami|Davvisámegiella|
   // ---------------------------------------------------------------------------
 
   const pathname = window.location.pathname;
-  const PAGE = /^\/release\//.test(pathname) ? "release"
+  // Film pages (/film/<slug>/) reuse the release flow; /films/<director> is not a film page.
+  const PAGE = /^\/(release|film)\//.test(pathname) ? "release"
+    : /^\/film_genre\/[^/]+/.test(pathname) ? "filmgenre"
     : /^\/charts\//.test(pathname) ? "chart"
     : /^\/find_similar_users/.test(pathname) ? "compat"
     : /^\/list\/[^/]+\/[^/]+/.test(pathname) ? "list"
@@ -1361,25 +1369,84 @@ se|Northern Sami|Davvisámegiella|
 
   if (!PAGE) return;
 
+  const pathParts = pathname.split("/").filter(Boolean);
+  const MEDIA = /^\/(film|film_genre)\//.test(pathname) || (PAGE === "chart" && pathParts[2] === "film")
+    ? "film"
+    : "music";
+
   if (document.getElementById("rym-picker-panel")) {
     console.warn("[RYM Chart Picker+] Another chart picker is already running on this page; disable one of them.");
     return;
   }
 
   const settings = loadSettings();
-  let compat = loadCompat();
+  let compat = loadCompat("music");
+  let compatFilm = loadCompat("film");
+  let learnedFilmSlugs = loadFilmGenreSlugs();
 
   if (PAGE === "compat") {
     captureCompatFromCurrentPage();
     return;
   }
 
-  const state = PAGE === "chart" ? initChartState() : createState();
+  const state = PAGE === "chart" ? initChartState() : MEDIA === "film" ? createFilmState() : createState();
   state.page = PAGE;
+
+  // Film charts show Descriptors only when the URL brought d:.
+  const urlHadDescriptors = PAGE === "chart" && state.descriptors.size > 0;
 
   if (PAGE === "release") {
     state.releaseYear = detectReleaseYear();
     state.matchAll.secondary = settings.influencesAll;
+  }
+
+  // Learn film genre slugs only on film pages: a music page's /genre/comedy/ would poison the film map.
+  if (MEDIA === "film" && PAGE === "chart") {
+    const found = {};
+    document.querySelectorAll(".page_charts_section_charts_item_genres_primary, .page_charts_section_charts_item_genres_secondary")
+      .forEach(root => Object.assign(found, parseFilmGenreSlugs(root)));
+    // URL slugs only count when a real anchor on the page names them (URL labels like "Comedy 1" are guesses).
+    const urlSlugs = new Set(Array.from(state.genreSlugs.values()).map(slug => slug.replace(/^-/, "")));
+    document.querySelectorAll('a.genre[href^="/genre/"]').forEach(anchor => {
+      if (anchor.closest("#rym-picker-panel")) return;
+      const slug = slugFromGenreHref(anchor.getAttribute("href"));
+      const name = cleanText(anchor.textContent).toLowerCase();
+      if (slug && name && urlSlugs.has(slug)) found[name] = slug;
+    });
+    learnFilmGenres(found);
+  }
+
+  let filmGenreName = "";
+  if (PAGE === "filmgenre") {
+    const found = {};
+    document.querySelectorAll("table.mbgen").forEach(root => Object.assign(found, parseFilmGenreSlugs(root)));
+    learnFilmGenres(found);
+
+    const crumbs = document.querySelectorAll(".ui_breadcrumb_item_main span");
+    const crumb = crumbs.length > 0 ? cleanText(crumbs[crumbs.length - 1].textContent) : "";
+    filmGenreName = crumb || filmGenreNameFromHref(pathname) || "";
+    if (filmGenreName) {
+      state.primaryGenres.add(filmGenreName);
+      state.genreSlugs.set(filmGenreName, filmGenreSlug(filmGenreName, learnedFilmSlugs));
+    }
+    state.matchAll.secondary = settings.influencesAll;
+  }
+
+  function loadFilmGenreSlugs() {
+    try {
+      const parsed = readStored(FILM_GENRES_KEY);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function learnFilmGenres(found) {
+    if (MEDIA !== "film" || !found || Object.keys(found).length === 0) return;
+    const stored = loadFilmGenreSlugs();
+    const merged = mergeFilmGenreSlugs(stored, found);
+    learnedFilmSlugs = merged;
+    if (JSON.stringify(merged) !== JSON.stringify(stored)) GM_setValue(FILM_GENRES_KEY, JSON.stringify(merged));
   }
 
   function readStored(key) {
@@ -1400,9 +1467,13 @@ se|Northern Sami|Davvisámegiella|
     GM_setValue(STORAGE_KEY, JSON.stringify(settings));
   }
 
-  function loadCompat() {
+  function compatKeyFor(scope) {
+    return scope === "film" ? COMPAT_FILM_KEY : COMPAT_KEY;
+  }
+
+  function loadCompat(scope) {
     try {
-      const parsed = readStored(COMPAT_KEY);
+      const parsed = readStored(compatKeyFor(scope));
       if (!parsed || typeof parsed !== "object") return null;
       const users = sanitizeCompatUsers(parsed.users);
       if (users.length === 0) return null;
@@ -1416,9 +1487,23 @@ se|Northern Sami|Davvisámegiella|
     }
   }
 
-  function saveCompat(users, forUser) {
-    compat = { users, forUser, syncedAt: Date.now() };
-    GM_setValue(COMPAT_KEY, JSON.stringify(compat));
+  function saveCompat(users, forUser, scope) {
+    const entry = { users, forUser, syncedAt: Date.now() };
+    if (scope === "film") compatFilm = entry;
+    else compat = entry;
+    GM_setValue(compatKeyFor(scope), JSON.stringify(entry));
+  }
+
+  function compatFor(scope) {
+    return scope === "film" ? compatFilm : compat;
+  }
+
+  // Which stored lists the "compat" filter reads: music pages one list, film pages per filmCompatSource.
+  function compatScopesNeeded() {
+    if (MEDIA !== "film") return ["music"];
+    if (settings.filmCompatSource === "music") return ["music"];
+    if (settings.filmCompatSource === "both") return ["film", "music"];
+    return ["film"];
   }
 
   // ---------------------------------------------------------------------------
@@ -1719,8 +1804,9 @@ se|Northern Sami|Davvisámegiella|
     // Only store the list when it is the logged-in user's own list.
     if (me && forUser && me.toLowerCase() !== forUser.toLowerCase()) return;
 
-    saveCompat(users, forUser);
-    toast(`Chart Picker+: saved ${users.length} compatible users.`);
+    const scope = compatScopeFromSearch(window.location.search);
+    saveCompat(users, forUser, scope);
+    toast(`Chart Picker+: saved ${users.length} compatible users${scope === "film" ? " (film)" : ""}.`);
   }
 
   function getOwnUsername() {
@@ -1735,9 +1821,11 @@ se|Northern Sami|Davvisámegiella|
   const OWN_USERNAME = getOwnUsername();
 
   function detectReleaseYear() {
-    const row = findRowsByLabel("released")[0];
-    if (!row) return null;
-    return extractYear(getRowValueText(row));
+    const row = findRowsByLabel("released")[0] || findRowsByLabel("release date")[0];
+    if (row) return extractYear(getRowValueText(row));
+    if (MEDIA !== "film") return null;
+    const meta = document.querySelector('.film_info meta[itemprop="dateCreated"]');
+    return meta ? extractYear(meta.getAttribute("content")) : null;
   }
 
   function getCurrentPageTypeSlug() {
@@ -1751,6 +1839,7 @@ se|Northern Sami|Davvisámegiella|
     return {
       ownUsername: OWN_USERNAME,
       compat,
+      compatFilm,
       pageTypeSlug: getCurrentPageTypeSlug()
     };
   }
@@ -1830,7 +1919,14 @@ se|Northern Sami|Davvisámegiella|
     #rym-picker-panel.rym-search-active #rym-picker-toggle-body-btn,
     #rym-picker-panel.rym-search-active #rym-picker-quick-open-btn,
     #rym-picker-panel.rym-page-chart #rym-picker-toggle-body-btn,
-    #rym-picker-panel.rym-page-chart #rym-picker-quick-open-btn { display: flex; }
+    #rym-picker-panel.rym-page-chart #rym-picker-quick-open-btn,
+    #rym-picker-panel.rym-page-filmgenre #rym-picker-toggle-body-btn,
+    #rym-picker-panel.rym-page-filmgenre #rym-picker-quick-open-btn { display: flex; }
+
+    #rym-film-genre-top {
+      display: inline-block; margin: 6px 0; padding: 4px 10px; border-radius: 3px;
+      background: #1676d2; color: #fff !important; font-weight: 600; text-decoration: none !important;
+    }
 
     #rym-picker-main-btn:hover, #rym-picker-toggle-body-btn:hover,
     #rym-picker-quick-open-btn:hover, #rym-picker-settings-btn:hover { background: var(--rym-blue-hover); }
@@ -2148,6 +2244,11 @@ se|Northern Sami|Davvisámegiella|
             <option value="25">top 25</option>
             <option value="50">top 50</option>
           </select>
+          <select id="rym-compat-source" class="rym-picker-hidden" title="Which compatible-users list to use for films">
+            <option value="film">Film</option>
+            <option value="music">Music</option>
+            <option value="both">Both</option>
+          </select>
         </label>
         <div id="rym-picker-users"></div>
       </div>
@@ -2338,6 +2439,7 @@ se|Northern Sami|Davvisámegiella|
   const settingsButton = $("rym-picker-settings-btn");
   const compatToggle = $("rym-compat-toggle");
   const compatTopNQuick = $("rym-compat-topn-quick");
+  const compatSourceSelect = $("rym-compat-source");
 
   for (const [value, label] of LISTING_OPTIONS) {
     const item = document.createElement("label");
@@ -2385,7 +2487,7 @@ se|Northern Sami|Davvisámegiella|
   // ---------------------------------------------------------------------------
 
   mainButton.addEventListener("click", () => {
-    if (PAGE === "chart" || PAGE === "list") {
+    if (PAGE === "chart" || PAGE === "list" || PAGE === "filmgenre") {
       state.bodyOpen = !state.bodyOpen;
       state.settingsOpen = false;
       render();
@@ -2441,7 +2543,7 @@ se|Northern Sami|Davvisámegiella|
       return;
     }
 
-    if (!state.urlUsers && filters.includes("compat") && selectCompatUsers(compat, settings).length === 0) {
+    if (!state.urlUsers && filters.includes("compat") && compatNamesFor(state, settings, buildContext()).length === 0) {
       toast("No compatible users yet. Use Sync now in settings.");
       state.bodyOpen = true;
       state.settingsOpen = true;
@@ -2450,7 +2552,7 @@ se|Northern Sami|Davvisámegiella|
     }
 
     const url = currentChartUrl();
-    const newTab = PAGE === "release" || (event && (event.shiftKey || event.metaKey || event.ctrlKey));
+    const newTab = PAGE === "release" || PAGE === "filmgenre" || (event && (event.shiftKey || event.metaKey || event.ctrlKey));
 
     if (newTab) {
       window.open(url, "_blank", "noopener,noreferrer");
@@ -2481,10 +2583,21 @@ se|Northern Sami|Davvisámegiella|
     }
     saveSettings();
     render();
-    if (on && compatIsStale()) syncCompat(true);
+    if (on) {
+      const stale = compatScopesNeeded().find(scope => compatIsStale(scope));
+      if (stale) syncCompat(true, stale);
+    }
   }
 
   compatToggle.addEventListener("change", () => setCompatFilter(compatToggle.checked));
+
+  compatSourceSelect.addEventListener("click", event => event.stopPropagation());
+  compatSourceSelect.addEventListener("change", () => {
+    settings.filmCompatSource = compatSourceSelect.value;
+    state.urlUsers = null;
+    saveSettings();
+    render();
+  });
 
   compatTopNQuick.addEventListener("click", event => event.stopPropagation());
   compatTopNQuick.addEventListener("change", () => {
@@ -2550,11 +2663,18 @@ se|Northern Sami|Davvisámegiella|
       saveSettings();
       render();
 
-      if (value === "compat" && input.checked && !compat) syncCompat();
+      if (value === "compat" && input.checked) {
+        const missing = compatScopesNeeded().find(scope => !compatFor(scope));
+        if (missing) syncCompat(false, missing);
+      }
     });
   });
 
-  $("rym-compat-sync").addEventListener("click", () => syncCompat(true));
+  // One list per click: the stalest of the lists this page uses.
+  $("rym-compat-sync").addEventListener("click", () => {
+    const needed = compatScopesNeeded();
+    syncCompat(true, needed.find(scope => compatIsStale(scope)) || needed[0]);
+  });
 
   $("rym-compat-topn").addEventListener("change", event => {
     settings.compatTopN = parseInt(event.target.value, 10) || 10;
@@ -2657,7 +2777,8 @@ se|Northern Sami|Davvisámegiella|
 
   let compatSyncing = false;
 
-  async function syncCompat(manual = false) {
+  // scope "music" = /find_similar_users?user=X, "film" = …&scope=film. One fetch; on failure, open the page.
+  async function syncCompat(manual = false, scope = "music") {
     if (compatSyncing) return;
 
     if (!OWN_USERNAME) {
@@ -2668,7 +2789,7 @@ se|Northern Sami|Davvisámegiella|
     compatSyncing = true;
     render();
 
-    const pageUrl = `/find_similar_users?user=${encodeURIComponent(OWN_USERNAME)}`;
+    const pageUrl = `/find_similar_users?user=${encodeURIComponent(OWN_USERNAME)}${scope === "film" ? "&scope=film" : ""}`;
 
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), 20000);
@@ -2683,8 +2804,8 @@ se|Northern Sami|Davvisámegiella|
         throw new Error(response.ok ? "empty" : `HTTP ${response.status}`);
       }
 
-      saveCompat(users, OWN_USERNAME);
-      toast(`Synced ${users.length} compatible users.`);
+      saveCompat(users, OWN_USERNAME, scope);
+      toast(`Synced ${users.length} compatible users${scope === "film" ? " (film)" : ""}.`);
     } catch (error) {
       // RYM's bot check blocks background fetches now and then. Opening the
       // page lets this same script capture the list from there.
@@ -2701,29 +2822,44 @@ se|Northern Sami|Davvisámegiella|
 
   // The fallback tab (find_similar_users) saves the list; pick it up here without refetching.
   if (typeof GM_addValueChangeListener === "function") {
-    GM_addValueChangeListener(COMPAT_KEY, (name, oldValue, newValue, remote) => {
-      if (!remote) return;
-      compat = loadCompat();
-      if (compat) toast(`Compatible users list updated (${compat.users.length}).`);
-      render();
+    [["music", COMPAT_KEY], ["film", COMPAT_FILM_KEY]].forEach(([scope, key]) => {
+      GM_addValueChangeListener(key, (name, oldValue, newValue, remote) => {
+        if (!remote) return;
+        const entry = loadCompat(scope);
+        if (scope === "film") compatFilm = entry;
+        else compat = entry;
+        if (entry) toast(`Compatible users list updated${scope === "film" ? " (film)" : ""} (${entry.users.length}).`);
+        render();
+      });
     });
   }
 
-  function compatIsStale() {
-    return !compat || !compat.syncedAt || (Date.now() - compat.syncedAt) > COMPAT_MAX_AGE_MS;
+  function compatIsStale(scope = "music") {
+    const entry = compatFor(scope);
+    return !entry || !entry.syncedAt || (Date.now() - entry.syncedAt) > COMPAT_MAX_AGE_MS;
   }
 
-  // Automatic fetches only on release/chart pages; list pages stay passive.
-  if ((PAGE === "release" || PAGE === "chart") && settings.userFilters.includes("compat") && compatIsStale() && OWN_USERNAME) {
-    setTimeout(() => syncCompat(false), 1500);
+  // Automatic fetches only on release/chart pages; list pages stay passive. At most one fetch per page load:
+  // music pages sync the music list, film pages only the film list.
+  if ((PAGE === "release" || PAGE === "chart") && settings.userFilters.includes("compat") && OWN_USERNAME) {
+    const autoScope = MEDIA !== "film" ? "music" : compatScopesNeeded().includes("film") ? "film" : null;
+    if (autoScope && compatIsStale(autoScope)) setTimeout(() => syncCompat(false, autoScope), 1500);
+  }
+
+  function compatStatusFor(scope) {
+    const entry = compatFor(scope);
+    if (!entry) return "Not synced yet.";
+    const days = Math.floor((Date.now() - entry.syncedAt) / 86400000);
+    const when = days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+    return `${entry.users.length} users · ${when}${compatIsStale(scope) ? " · stale" : ""}`;
   }
 
   function compatStatusText() {
     if (compatSyncing) return "Syncing…";
-    if (!compat) return "Not synced yet.";
-    const days = Math.floor((Date.now() - compat.syncedAt) / 86400000);
-    const when = days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
-    return `${compat.users.length} users · ${when}${compatIsStale() ? " · stale" : ""}`;
+    if (MEDIA !== "film") return compatStatusFor("music");
+    return compatScopesNeeded()
+      .map(scope => `${scope === "film" ? "Film" : "Music"}: ${compatStatusFor(scope)}`)
+      .join(" | ");
   }
 
   // ---------------------------------------------------------------------------
@@ -2743,6 +2879,10 @@ se|Northern Sami|Davvisámegiella|
       mainButton.textContent = "Chart Picker+: edit this chart";
       mainButton.style.background = "var(--rym-blue)";
       $("rym-picker-status").textContent = "Editing current chart";
+    } else if (PAGE === "filmgenre") {
+      mainButton.textContent = "Chart Picker+: film genre";
+      mainButton.style.background = "var(--rym-blue)";
+      $("rym-picker-status").textContent = filmGenreName ? `Genre: ${filmGenreName}` : "Film genre";
     } else if (PAGE === "list") {
       mainButton.textContent = "Chart Picker+: lists";
       mainButton.style.background = "var(--rym-blue)";
@@ -2763,8 +2903,15 @@ se|Northern Sami|Davvisámegiella|
     renderSet("rym-picker-desc", state.descriptors, "descriptors");
     renderLanguageSet();
     renderUsersChip();
-    if (PAGE === "release") renderReleaseLists();
+    if (PAGE === "release" && MEDIA !== "film") renderReleaseLists();
     renderListsSection();
+
+    // Films: the type is always "film"; no descriptors on film pages (kept on film charts that brought d:); no lists.
+    if (MEDIA === "film") {
+      panel.querySelector(".rym-picker-types-row").classList.add("rym-picker-hidden");
+      $("rym-picker-desc").closest(".rym-picker-row").classList.toggle("rym-picker-hidden", !urlHadDescriptors);
+      $("rym-picker-lists").classList.add("rym-picker-hidden");
+    }
 
     document.querySelectorAll("[data-listing-mode]").forEach(input => {
       input.checked = settings.listingMode === input.dataset.listingMode;
@@ -2801,7 +2948,9 @@ se|Northern Sami|Davvisámegiella|
     $("rym-compat-include-me").checked = settings.compatIncludeMe;
     $("rym-compat-status").textContent = compatStatusText();
     $("rym-compat-sync").disabled = compatSyncing;
-    $("rym-compat-count-note").textContent = compat ? `${selectCompatUsers(compat, settings).length} selected` : "";
+    $("rym-compat-count-note").textContent = compatScopesNeeded().some(compatFor)
+      ? `${compatNamesFor(state, settings, buildContext()).length} selected`
+      : "";
 
     document.querySelectorAll("[data-match-all]").forEach(input => {
       const key = input.dataset.matchAll;
@@ -2816,6 +2965,8 @@ se|Northern Sami|Davvisámegiella|
     compatToggle.closest("label").classList.toggle("rym-picker-toggle-on", compatOn);
     compatTopNQuick.value = String(settings.compatTopN);
     compatTopNQuick.disabled = !compatOn;
+    compatSourceSelect.classList.toggle("rym-picker-hidden", MEDIA !== "film");
+    compatSourceSelect.value = settings.filmCompatSource;
 
     $("rym-other-username-wrap").classList.toggle("rym-picker-hidden", !settings.userFilters.includes("other"));
     $("rym-compat-wrap").classList.toggle("rym-picker-hidden", !settings.userFilters.includes("compat"));
@@ -2949,7 +3100,7 @@ se|Northern Sami|Davvisámegiella|
 
     const parts = [];
     if (filters.includes("compat")) {
-      const n = selectCompatUsers(compat, settings).length;
+      const n = compatNamesFor(state, settings, buildContext()).length;
       parts.push(`${n} compatible`);
     }
     if (filters.includes("following")) parts.push("following");
@@ -2965,15 +3116,29 @@ se|Northern Sami|Davvisámegiella|
   function renderCompatList() {
     const el = $("rym-compat-list");
     el.innerHTML = "";
+    const scopes = compatScopesNeeded();
+    for (const scope of scopes) {
+      const target = scopes.length > 1 || MEDIA === "film" ? document.createElement("div") : el;
+      if (target !== el) {
+        const title = document.createElement("div");
+        title.className = "rym-compat-item rym-picker-empty";
+        title.textContent = scope === "film" ? "Film list" : "Music list";
+        el.appendChild(title);
+        el.appendChild(target);
+      }
+      renderCompatScopeList(target, compatFor(scope));
+    }
+  }
 
-    if (!compat || compat.users.length === 0) {
+  function renderCompatScopeList(el, entry) {
+    if (!entry || entry.users.length === 0) {
       el.innerHTML = `<div class="rym-compat-item rym-picker-empty">No list yet. Click Sync now.</div>`;
       return;
     }
 
     const excluded = new Set(settings.compatExcluded.map(name => name.toLowerCase()));
     const topN = Math.max(1, settings.compatTopN);
-    const candidates = compat.users.filter(user => user.score >= settings.compatMinScore).slice(0, topN);
+    const candidates = entry.users.filter(user => user.score >= settings.compatMinScore).slice(0, topN);
 
     if (candidates.length === 0) {
       el.innerHTML = `<div class="rym-compat-item rym-picker-empty">Nobody passes the minimum score. Lower it.</div>`;
@@ -3251,7 +3416,7 @@ se|Northern Sami|Davvisámegiella|
     state.descriptors.clear();
     state.languages.clear();
     state.genreSlugs.clear();
-    state.extraSegments = [];
+    state.extraSegments = state.media === "film" ? [FILM_SEPARATE_SEGMENT] : [];
     state.matchAll = { primary: false, secondary: settings.influencesAll, descriptors: false };
     // User filter is a setting, not a selection: Clear leaves it alone.
   }
@@ -3261,7 +3426,7 @@ se|Northern Sami|Davvisámegiella|
   // ---------------------------------------------------------------------------
 
   function infoRoot() {
-    return document.querySelector(".album_info, .release_page .info") || document;
+    return document.querySelector(".album_info, .film_info, .release_page .info") || document;
   }
 
   function refreshPageHighlights() {
@@ -3282,7 +3447,7 @@ se|Northern Sami|Davvisámegiella|
 
     if (state.year.mode !== "none") {
       const selectedYear = String(state.year.from);
-      for (const row of findRowsByLabel("released")) {
+      for (const row of [...findRowsByLabel("released"), ...findRowsByLabel("release date")]) {
         row.querySelectorAll("a").forEach(anchor => {
           const text = cleanText(anchor.textContent);
           const href = anchor.getAttribute("href") || "";
@@ -3293,7 +3458,7 @@ se|Northern Sami|Davvisámegiella|
       }
     }
 
-    root.querySelectorAll('a[href*="/genre/"]').forEach(anchor => {
+    root.querySelectorAll('a[href*="/genre/"], a[href*="/film_genre/"]').forEach(anchor => {
       const value = cleanMetadataToken(anchor.textContent);
       if (state.primaryGenres.has(value) || state.secondaryGenres.has(value)) {
         anchor.classList.add("rym-picker-selected-target");
@@ -3444,7 +3609,7 @@ se|Northern Sami|Davvisámegiella|
   // Release info lives in `.album_info tr`. Fall back to a wider scan only if
   // RYM changes the markup.
   function findRowsByLabel(label) {
-    const tableRows = Array.from(document.querySelectorAll(".album_info tr"))
+    const tableRows = Array.from(document.querySelectorAll(".album_info tr, .film_info tr"))
       .filter(row => findRowLabel(row) === label);
     if (tableRows.length > 0) return tableRows;
 
@@ -3534,9 +3699,24 @@ se|Northern Sami|Davvisámegiella|
     const href = anchor ? anchor.getAttribute("href") || "" : "";
     const text = cleanText(target.textContent);
 
-    if (rowLabel === "released") {
+    if (rowLabel === "released" || rowLabel === "release date") {
       const year = extractYear(text) || extractYear(getRowValueText(row));
       if (year) return { kind: "year", value: year, action: "Year" };
+    }
+
+    // Film genre links point to /film_genre/<Name>/, which carries no chart slug: learned map, seed, then rymSlug.
+    if (MEDIA === "film" && href.includes("/film_genre/") && row && rowLabel === "genres") {
+      const value = filmGenreNameFromHref(href) || cleanMetadataToken(text);
+      if (!value) return null;
+
+      const genreKind = target.closest(".film_sec_genres") ? "secondaryGenre" : "primaryGenre";
+
+      return {
+        kind: genreKind,
+        value,
+        slug: filmGenreSlug(value, learnedFilmSlugs),
+        action: genreKind === "primaryGenre" ? "Toggled primary genre" : "Toggled secondary genre"
+      };
     }
 
     if (href.includes("/genre/") && row && rowLabel === "genres") {
@@ -3594,7 +3774,7 @@ se|Northern Sami|Davvisámegiella|
   state.listsTab = null;
   state.listsShowNative = false;
 
-  if (PAGE === "release") {
+  if (PAGE === "release" && MEDIA !== "film") {
     try {
       releaseLists = parseReleaseListsSection(document);
     } catch (error) {
@@ -4091,6 +4271,24 @@ se|Northern Sami|Davvisámegiella|
 
   if (PAGE === "chart") {
     state.bodyOpen = false;
+  }
+
+  // Film genre pages list films chronologically; this links the all-time top chart of just that genre.
+  if (PAGE === "filmgenre" && filmGenreName) {
+    const topState = createFilmState();
+    topState.primaryGenres.add(filmGenreName);
+    topState.genreSlugs.set(filmGenreName, state.genreSlugs.get(filmGenreName));
+    const plain = { ...settings, listingMode: "top", userFilters: ["all"], defaultLanguageMode: "all" };
+    const link = document.createElement("a");
+    link.id = "rym-film-genre-top";
+    link.href = buildChartUrl(topState, plain, buildContext());
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Top chart";
+    link.title = `Top ${filmGenreName} films of all time`;
+    const anchorPoint = document.querySelector(".ui_breadcrumb_frame");
+    if (anchorPoint) anchorPoint.insertAdjacentElement("afterend", link);
+    else document.body.insertBefore(link, document.body.firstChild);
   }
 
   render();
