@@ -5,5 +5,6 @@ set -e
 cd "${0:a:h}"
 mkdir -p ~/.local/bin
 cp rym rym-abrir rym-espacio-vacio.js ~/.local/bin/
+swiftc -O rym-espacios.swift -o ~/.local/bin/rym-espacios
 chmod +x ~/.local/bin/rym ~/.local/bin/rym-abrir
 echo "Instalado en ~/.local/bin"

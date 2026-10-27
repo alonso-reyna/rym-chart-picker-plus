@@ -17,14 +17,16 @@ versionada; lo que corre de verdad está en `~/.local/bin`. Tras editar: `./inst
    `rym-espacio-vacio.js`, abre una ventana nueva de Chrome (perfil Default), espera a que exista,
    la coloca en la pantalla correcta y la trae al frente.
 5. **`rym-espacio-vacio.js`**: con ⌃→/⌃← busca el escritorio vacío más cercano (+1, −1, +2, …) en la
-   pantalla donde estás; si no hay, regresa al original.
+   pantalla donde estás; si no hay, regresa al original. Sabe en qué escritorio está con `rym-espacios`
+   (helper en Swift, `rym-espacios.swift`, que compila `install.sh`).
 
 Log de cada corrida: `~/Library/Caches/rym/log` (`reuso:`, `espacio:`, `ventana:`).
 
 ## Fix 2026-10-27 (escritorio vacío sin la pestaña, con y sin monitor)
 
-- El escritorio actual se leía del `.plist` crudo, que macOS escribe con retraso: ahora se lee vía
-  `defaults export` (cfprefsd) y cada tecla se confirma esperando a que el escritorio cambie de verdad.
+- El escritorio actual se leía del `.plist`, que macOS escribe con retraso (también vía `defaults`:
+  probado, se movía a la derecha, no lo notaba y regresaba). Ahora se pregunta en vivo con `rym-espacios`
+  y cada tecla se confirma esperando a que el escritorio cambie de verdad.
 - Con "Displays have separate Spaces" el script siempre revisaba la pantalla principal, aunque las
   teclas movieran la otra: ahora la primera tecla detecta qué pantalla se movió y usa esa.
 - "Vacío" solo miraba la esquina superior izquierda de cada ventana: ahora usa intersección real y

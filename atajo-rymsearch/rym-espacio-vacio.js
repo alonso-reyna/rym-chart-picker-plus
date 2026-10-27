@@ -6,7 +6,7 @@
 //
 // Funciona con una pantalla y con monitor externo, con "Displays have separate Spaces" encendido o
 // apagado: cada tecla se confirma leyendo qué pantalla cambió de escritorio (vía cfprefsd, no el
-// archivo crudo, que macOS escribe con retraso).
+// plist, que macOS escribe con retraso: ni el archivo ni `defaults` sirven para esto).
 ObjC.import('AppKit');
 ObjC.import('CoreGraphics');
 ObjC.import('Foundation');
@@ -58,11 +58,9 @@ function pantallaActual(ps) {
 }
 
 // ---------- escritorios ----------
-function estado() {
-  const j = JSON.parse(app.doShellScript('defaults export com.apple.spaces - | plutil -convert json -o - -'));
-  return j.SpacesDisplayConfiguration['Management Data'].Monitors
-    .filter(m => m.Spaces && m.Spaces.length && m['Current Space'])
-    .map(m => ({ id: m['Display Identifier'], spaces: m.Spaces.map(s => s.ManagedSpaceID), cur: m['Current Space'].ManagedSpaceID }));
+function estado() { // en vivo, vía rym-espacios (CGSCopyManagedDisplaySpaces)
+  return JSON.parse(app.doShellScript('$HOME/.local/bin/rym-espacios'))
+    .filter(m => m.spaces.length && m.cur >= 0);
 }
 
 function monitorDe(p, mons) {
