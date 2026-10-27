@@ -65,6 +65,25 @@ assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters:
 assert.equal(api.buildUserSegment(api.createState(), { ...settings, userFilters: ["compat", "myself"], compatTopN: 1 }, { ...ctx, ownUsername: "BNSAIBOY" }), "u:BNSAIBOY");
 assert.equal(api.buildUserSegment(api.createState(), settings, ctx), "");
 
+// film compatibles (film/music/both)
+{
+  const compatFilm = { users: [{ username: "phowbee", score: 100, rank: 1 }, { username: "kai7", score: 90, rank: 2 }] };
+  const fctx = { ...ctx, compatFilm };
+  const fstate = api.createFilmState(); fstate.urlUsers = null;
+  const fset = { ...settings, userFilters: ["compat"], compatTopN: 2 };
+  assert.equal(api.buildUserSegment(fstate, fset, fctx), "u:phowbee,kai7");
+  assert.equal(api.buildUserSegment(fstate, { ...fset, filmCompatSource: "music" }, fctx), "u:bnsaiboy,Kai7");
+  assert.equal(api.buildUserSegment(fstate, { ...fset, filmCompatSource: "both" }, fctx), "u:phowbee,kai7,bnsaiboy");
+  assert.equal(api.buildUserSegment(fstate, { ...fset, filmCompatSource: "both", compatExcluded: ["phowbee"] }, fctx), "u:kai7,bnsaiboy");
+  assert.equal(api.buildUserSegment(fstate, fset, ctx), "");
+  assert.equal(api.compatScopeFromSearch("?user=alonsoreyna&scope=film"), "film");
+  assert.equal(api.compatScopeFromSearch("user=alonsoreyna&scope=film"), "film");
+  assert.equal(api.compatScopeFromSearch("?user=alonsoreyna"), "music");
+  assert.equal(api.normalizeSettings({ filmCompatSource: "x" }).filmCompatSource, "film");
+  assert.equal(api.normalizeSettings({ filmCompatSource: "both" }).filmCompatSource, "both");
+  assert.equal(api.DEFAULT_SETTINGS.filmCompatSource, "film");
+}
+
 // parse chart path and rebuild
 const { state: cs, listing } = api.parseChartPath("/charts/esoteric/album,ep/2010-2015/g:indie-folk,-slowcore/d:melancholic/s:art-pop/l:en/u:a,b/");
 assert.equal(listing, "esoteric");

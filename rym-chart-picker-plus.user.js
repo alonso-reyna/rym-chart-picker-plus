@@ -335,6 +335,7 @@ se|Northern Sami|Davvisámegiella|
     compatMinScoreV2: true,
     compatIncludeMe: false,
     compatExcluded: [],
+    filmCompatSource: "film", // film | music | both (solo en modo película)
     listSearchType: "s", // verificado 2026-10-22: RYMsearch.types → Lists = "s"
     listFetchDelayMs: 3000,
     listFetchMax: 25
@@ -710,6 +711,29 @@ se|Northern Sami|Davvisámegiella|
       .filter(user => user.username);
   }
 
+  function compatScopeFromSearch(search) {
+    const params = new URLSearchParams(String(search || "").replace(/^\?/, ""));
+    return params.get("scope") === "film" ? "film" : "music";
+  }
+
+  // Compat usernames for the "compat" user filter. Music: unchanged. Film: per settings.filmCompatSource.
+  function compatNamesFor(state, settings, context) {
+    const pick = compat => selectCompatUsers(compat, settings).map(user => user.username);
+    if (!state || state.media !== "film") return pick(context.compat);
+    const source = settings.filmCompatSource;
+    if (source === "music") return pick(context.compat);
+    if (source === "both") {
+      const seen = new Set();
+      return [...pick(context.compatFilm), ...pick(context.compat)].filter(name => {
+        const key = name.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    return pick(context.compatFilm);
+  }
+
   function buildUserSegment(state, settings, context) {
     // null = not from a URL (use settings); [] = the chart URL has no user filter; [...] = reuse it.
     if (Array.isArray(state.urlUsers)) {
@@ -729,7 +753,7 @@ se|Northern Sami|Davvisámegiella|
     if (filters.includes("other") && other) parts.push(other);
 
     if (filters.includes("compat")) {
-      const names = selectCompatUsers(context.compat, settings).map(user => user.username);
+      const names = compatNamesFor(state, settings, context);
       if (settings.compatIncludeMe && me && !filters.includes("myself")) names.unshift(me);
       parts.push(...names);
     }
@@ -929,6 +953,7 @@ se|Northern Sami|Davvisámegiella|
       compatMinScoreV2: true,
       compatIncludeMe: parsed.compatIncludeMe === true,
       compatExcluded: arrayOf("compatExcluded"),
+      filmCompatSource: pick("filmCompatSource", ["film", "music", "both"]),
       // "l" fue el default (no verificado) de 1.3.0/1.3.1 y busca releases: migrar al tipo real de listas.
       listSearchType: typeof parsed.listSearchType === "string" && parsed.listSearchType.trim() && parsed.listSearchType.trim() !== "l" ? parsed.listSearchType.trim() : defaults.listSearchType,
       listFetchDelayMs: intIn("listFetchDelayMs", 1000, 600000),
@@ -1306,7 +1331,7 @@ se|Northern Sami|Davvisámegiella|
     rymSlug, slugFromGenreHref, FILM_GENRE_SLUG_SEED, filmGenreNameFromHref, filmGenreSlug, parseFilmGenreSlugs, mergeFilmGenreSlugs,
     buildDuckyUrl, parseLetterboxdOgTitle, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
-    createState, createFilmState, FILM_SEPARATE_SEGMENT, parseChartPath, buildChartUrl, selectCompatUsers, sanitizeCompatUsers, canonicalTypeSlugs,
+    createState, createFilmState, FILM_SEPARATE_SEGMENT, parseChartPath, buildChartUrl, selectCompatUsers, compatNamesFor, compatScopeFromSearch, sanitizeCompatUsers, canonicalTypeSlugs,
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
     ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS,
     LIST_LOG_CATEGORIES, LIST_OTHER_CATEGORIES, classifyListCategories, classifyListTitle,
