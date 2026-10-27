@@ -1420,7 +1420,15 @@ se|Northern Sami|Davvisámegiella|
   if (PAGE === "filmgenre") {
     const found = {};
     document.querySelectorAll("table.mbgen").forEach(root => Object.assign(found, parseFilmGenreSlugs(root)));
-    learnFilmGenres(found);
+    // Description links are a weaker source than chart pages: only fill gaps, never replace a stored or seeded slug.
+    const known = loadFilmGenreSlugs();
+    const fresh = {};
+    for (const [name, slug] of Object.entries(found)) {
+      const isKnown = Object.prototype.hasOwnProperty.call(known, name)
+        || Object.prototype.hasOwnProperty.call(FILM_GENRE_SLUG_SEED, name);
+      if (!isKnown) fresh[name] = slug;
+    }
+    learnFilmGenres(fresh);
 
     const crumbs = document.querySelectorAll(".ui_breadcrumb_item_main span");
     const crumb = crumbs.length > 0 ? cleanText(crumbs[crumbs.length - 1].textContent) : "";
@@ -2487,7 +2495,7 @@ se|Northern Sami|Davvisámegiella|
   // ---------------------------------------------------------------------------
 
   mainButton.addEventListener("click", () => {
-    if (PAGE === "chart" || PAGE === "list" || PAGE === "filmgenre") {
+    if (PAGE === "chart" || PAGE === "list") {
       state.bodyOpen = !state.bodyOpen;
       state.settingsOpen = false;
       render();
@@ -2879,10 +2887,6 @@ se|Northern Sami|Davvisámegiella|
       mainButton.textContent = "Chart Picker+: edit this chart";
       mainButton.style.background = "var(--rym-blue)";
       $("rym-picker-status").textContent = "Editing current chart";
-    } else if (PAGE === "filmgenre") {
-      mainButton.textContent = "Chart Picker+: film genre";
-      mainButton.style.background = "var(--rym-blue)";
-      $("rym-picker-status").textContent = filmGenreName ? `Genre: ${filmGenreName}` : "Film genre";
     } else if (PAGE === "list") {
       mainButton.textContent = "Chart Picker+: lists";
       mainButton.style.background = "var(--rym-blue)";
@@ -3434,6 +3438,11 @@ se|Northern Sami|Davvisámegiella|
       element.classList.remove("rym-picker-selected-target");
     });
 
+    if (PAGE === "filmgenre") {
+      if (state.active) refreshFilmGenreHighlights();
+      return;
+    }
+
     if (PAGE !== "release") return;
 
     if (!state.active) {
@@ -3643,11 +3652,17 @@ se|Northern Sami|Davvisámegiella|
     return null;
   }
 
+  const PICK_PAGE = PAGE === "release" || PAGE === "filmgenre";
+
+  function classifyAny(target) {
+    return PAGE === "filmgenre" ? classifyFilmGenreClick(target) : classifyClick(target);
+  }
+
   document.addEventListener("click", function (event) {
-    if (PAGE !== "release" || !state.active) return;
+    if (!PICK_PAGE || !state.active) return;
     if (event.target.closest("#rym-picker-panel")) return;
 
-    const picked = classifyClick(event.target);
+    const picked = classifyAny(event.target);
     if (!picked) return;
 
     event.preventDefault();
@@ -3660,14 +3675,66 @@ se|Northern Sami|Davvisámegiella|
   }, true);
 
   document.addEventListener("mouseover", function (event) {
-    if (PAGE !== "release" || !state.active) return;
+    if (!PICK_PAGE || !state.active) return;
     if (event.target.closest("#rym-picker-panel")) return;
-    if (classifyClick(event.target)) event.target.classList.add("rym-picker-active-outline");
+    if (classifyAny(event.target)) event.target.classList.add("rym-picker-active-outline");
   });
 
   document.addEventListener("mouseout", function (event) {
     event.target.classList.remove("rym-picker-active-outline");
   });
+
+  // Film genre page: year cells of the film table and genre links (description, related genres) are pickable.
+  // Film titles, RYM controls and our "Top chart" link are left alone.
+  function filmGenrePageAnchorGenre(anchor) {
+    const href = anchor.getAttribute("href") || "";
+    if (href.startsWith("/film_genre/")) {
+      const name = filmGenreNameFromHref(href);
+      return name ? { value: name, slug: filmGenreSlug(name, learnedFilmSlugs) } : null;
+    }
+    if (href.startsWith("/genre/")) {
+      const name = cleanMetadataToken(anchor.textContent);
+      const slug = slugFromGenreHref(href);
+      return name && slug ? { value: name, slug } : null;
+    }
+    return null;
+  }
+
+  function filmGenreYearCell(target) {
+    const cell = target.closest("td");
+    if (!cell || !cell.closest("table.mbgen") || !cell.parentElement.querySelector("a.film")) return null;
+    const text = cleanText(cell.textContent);
+    return /^\d{4}$/.test(text) ? cell : null;
+  }
+
+  function classifyFilmGenreClick(target) {
+    if (target.closest("button, input, select, textarea, [contenteditable='true'], #rym-film-genre-top")) return null;
+
+    const anchor = target.closest("a");
+    if (anchor) {
+      const genre = filmGenrePageAnchorGenre(anchor);
+      return genre ? { kind: "primaryGenre", ...genre, action: "Toggled primary genre" } : null;
+    }
+
+    const cell = filmGenreYearCell(target);
+    if (cell) return { kind: "year", value: Number(cleanText(cell.textContent)), action: "Year" };
+    return null;
+  }
+
+  function refreshFilmGenreHighlights() {
+    document.querySelectorAll('a[href^="/genre/"], a[href^="/film_genre/"]').forEach(anchor => {
+      if (anchor.closest("#rym-picker-panel")) return;
+      const genre = filmGenrePageAnchorGenre(anchor);
+      if (genre && (state.primaryGenres.has(genre.value) || state.secondaryGenres.has(genre.value))) {
+        anchor.classList.add("rym-picker-selected-target");
+      }
+    });
+    if (state.year.mode === "none") return;
+    const selectedYear = String(state.year.from);
+    document.querySelectorAll("table.mbgen td").forEach(cell => {
+      if (filmGenreYearCell(cell) && cleanText(cell.textContent) === selectedYear) cell.classList.add("rym-picker-selected-target");
+    });
+  }
 
   function classifyClick(target) {
     const descriptorSpan = target.closest("[data-rym-descriptor-token]");
