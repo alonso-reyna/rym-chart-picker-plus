@@ -427,4 +427,23 @@ assert.equal(api.parseReleaseListsSection(page2(...filler(60), noisy)), null);
   assert.deepEqual(api.parseLetterboxdOgTitle("Untitled"), { title: "Untitled", year: null });
 }
 
+// film genre click: known names win over the href slug (F1)
+{
+  assert.equal(api.resolveFilmGenreClickSlug("Comedy", "comedy", {}), "comedy-1");
+  assert.equal(api.resolveFilmGenreClickSlug("Horror Comedy", "horror-comedy", { "horror comedy": "horror-comedy-2" }), "horror-comedy-2");
+  assert.equal(api.resolveFilmGenreClickSlug("Satire", "satire", { "satire": "satire-3" }), "satire-3");
+  assert.equal(api.resolveFilmGenreClickSlug("Mumblecore", "mumblecore-1", {}), "mumblecore-1");
+  assert.equal(api.resolveFilmGenreClickSlug("Slow Cinema", null, {}), "slow-cinema");
+}
+
+// film years before 1900 (F2); music keeps 19xx/20xx only
+{
+  assert.equal(api.extractFilmYear("28 December 1895"), 1895);
+  assert.equal(api.extractFilmYear("1895-12-28"), 1895);
+  assert.equal(api.extractFilmYear("2006"), 2006);
+  assert.equal(api.extractFilmYear("no year"), null);
+  assert.equal(api.extractYear("28 December 1895"), null);
+  assert.equal(api.extractYear("1 January 1999"), 1999);
+}
+
 console.log("all tests passed");

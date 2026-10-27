@@ -152,9 +152,15 @@ Con Search ON puedes hacer clic en un año de la lista o en los géneros relacio
 
 **En un chart de cine**: igual que en música, "edit this chart" te deja cambiar el filtro en sitio.
 
-**Compatibles de cine**: en settings elige la fuente, **Film**, **Music** o **Both**. "Sync" en cine usa la lista de
-compatibles de cine. Con **Both**, el sync automático solo refresca la lista de cine; la de música se refresca al
-visitar páginas de música o con **Sync now**.
+**Compatibles de cine**: la fuente se elige en la fila **Users** del panel, con el selector **Film / Music / Both**
+(solo aparece en páginas de cine; por defecto **Film**). Está desactivado mientras el toggle de usuarios compatibles
+esté apagado, así no borra los `u:` de un chart. **Sync now** sincroniza una sola lista por clic según la fuente: Film
+o Music la suya; con **Both**, la primera que esté vencida (*stale*) empezando por la de cine, y si ninguna lo está,
+la de cine. El sync automático al cargar la
+página refresca como máximo una lista: en cine, la de cine si la fuente la usa; la de música se refresca en páginas de
+música o con **Sync now**.
+
+En páginas de cine el settings no muestra "Default release type" ni la sección **Lists**: son solo de música.
 
 **Letterboxd ↔ RYM**: en una película de RYM aparece el botón **Letterboxd** y en Letterboxd el botón **RYM**. Abren el
 primer resultado de DuckDuckGo (sin peticiones del script). El enlace **search** muestra la lista de resultados por si

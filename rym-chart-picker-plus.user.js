@@ -426,6 +426,17 @@ se|Northern Sami|Davvisámegiella|
     return prefix + slug;
   }
 
+  // Click on a /genre/<slug>/ link on a film page: a name the learned map or the seed knows wins over the href
+  // (RYM's music genre "comedy" is not the film genre "comedy-1"); the href slug only covers unknown names.
+  function resolveFilmGenreClickSlug(name, hrefSlug, learned) {
+    const key = String(name || "").trim().replace(/^-\s*/, "").toLowerCase();
+    const map = learned || {};
+    const known = (Object.prototype.hasOwnProperty.call(map, key) && map[key])
+      || Object.prototype.hasOwnProperty.call(FILM_GENRE_SLUG_SEED, key);
+    if (known || !hrefSlug) return filmGenreSlug(name, learned);
+    return hrefSlug;
+  }
+
   function parseFilmGenreSlugs(root) {
     const out = {};
     if (!root || typeof root.querySelectorAll !== "function") return out;
@@ -464,6 +475,12 @@ se|Northern Sami|Davvisámegiella|
 
   function extractYear(value) {
     const match = String(value || "").match(/\b(19|20)\d{2}\b/);
+    return match ? Number(match[0]) : null;
+  }
+
+  // Films start in the 1880s; music pages keep the 19xx/20xx rule (extractYear).
+  function extractFilmYear(value) {
+    const match = String(value || "").match(/\b(18[89]|19\d|20\d)\d\b/);
     return match ? Number(match[0]) : null;
   }
 
@@ -1336,7 +1353,8 @@ se|Northern Sami|Davvisámegiella|
   }
 
   const PURE_API = {
-    rymSlug, slugFromGenreHref, FILM_GENRE_SLUG_SEED, filmGenreNameFromHref, filmGenreSlug, parseFilmGenreSlugs, mergeFilmGenreSlugs,
+    rymSlug, slugFromGenreHref, FILM_GENRE_SLUG_SEED, filmGenreNameFromHref, filmGenreSlug, resolveFilmGenreClickSlug, parseFilmGenreSlugs, mergeFilmGenreSlugs,
+    extractYear, extractFilmYear,
     buildDuckyUrl, parseLetterboxdOgTitle, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
     createState, createFilmState, FILM_SEPARATE_SEGMENT, parseChartPath, buildChartUrl, selectCompatUsers, compatNamesFor, compatScopeFromSearch, sanitizeCompatUsers, canonicalTypeSlugs,
@@ -1379,12 +1397,17 @@ se|Northern Sami|Davvisámegiella|
   // Test-only branch: lets the localhost fixture stand in for Letterboxd.
   const isLetterboxd = /(^|\.)letterboxd\.com$/.test(location.hostname) || (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.pathname.startsWith("/letterboxd/film/"));
   if (isLetterboxd) {
+    if (document.querySelector(".rym-picker-crosslinks")) return;
     const og = document.querySelector('meta[property="og:title"]');
-    if (!og) return;
-    const parsed = parseLetterboxdOgTitle(og.getAttribute("content") || "");
+    let parsed = parseLetterboxdOgTitle(og ? og.getAttribute("content") || "" : "");
+    if (!parsed.title) {
+      // No usable og:title: take the masthead title and search without a year.
+      const masthead = document.querySelector("section.production-masthead h1.headline-1.primaryname");
+      parsed = { title: masthead ? cleanText(masthead.textContent) : "", year: null };
+    }
     if (!parsed.title) return;
     const links = makeCrossLinks("RYM", "rateyourmusic.com/film", parsed.title, parsed.year, "font-size:14px;font-weight:normal;");
-    const h1 = document.querySelector("section.production-masthead h1, h1.headline-1, h1");
+    const h1 = document.querySelector("section.production-masthead h1, h1.headline-1");
     if (h1) {
       h1.insertAdjacentElement("afterend", links);
     } else {
@@ -1441,7 +1464,7 @@ se|Northern Sami|Davvisámegiella|
     state.matchAll.secondary = settings.influencesAll;
     if (MEDIA === "film") {
       const filmH1 = document.querySelector(".film_title h1");
-      if (filmH1 && cleanText(filmH1.textContent)) {
+      if (filmH1 && cleanText(filmH1.textContent) && !document.querySelector(".rym-picker-crosslinks")) {
         filmH1.insertAdjacentElement("afterend", makeCrossLinks("Letterboxd", "letterboxd.com/film", filmH1.textContent, state.releaseYear, "font-size:14px;font-weight:normal;"));
       }
     }
@@ -1877,10 +1900,10 @@ se|Northern Sami|Davvisámegiella|
 
   function detectReleaseYear() {
     const row = findRowsByLabel("released")[0] || findRowsByLabel("release date")[0];
-    if (row) return extractYear(getRowValueText(row));
-    if (MEDIA !== "film") return null;
+    if (MEDIA !== "film") return row ? extractYear(getRowValueText(row)) : null;
+    if (row) return extractFilmYear(getRowValueText(row));
     const meta = document.querySelector('.film_info meta[itemprop="dateCreated"]');
-    return meta ? extractYear(meta.getAttribute("content")) : null;
+    return meta ? extractFilmYear(meta.getAttribute("content")) : null;
   }
 
   function getCurrentPageTypeSlug() {
@@ -2331,7 +2354,7 @@ se|Northern Sami|Davvisámegiella|
           <div class="rym-picker-listing-list" id="rym-listing-options"></div>
         </div>
 
-        <div class="rym-picker-setting">
+        <div class="rym-picker-setting" id="rym-setting-type-group">
           <span class="rym-picker-setting-title">Default release type when none is selected</span>
           <div class="rym-picker-checklist">
             <label class="rym-picker-checkitem"><input type="radio" name="rym-type-mode" data-type-mode="all"><span>All release types</span></label>
@@ -2388,7 +2411,7 @@ se|Northern Sami|Davvisámegiella|
           <div class="rym-picker-small-note">Score is relative to your most compatible user (rank 1 = 100 %). Untick a user to leave them out.</div>
         </div>
 
-        <div class="rym-picker-setting">
+        <div class="rym-picker-setting" id="rym-setting-lists-group">
           <span class="rym-picker-setting-title">Lists</span>
           <label for="rym-setting-list-search-type">List search type</label>
           <input type="text" id="rym-setting-list-search-type" />
@@ -2648,8 +2671,8 @@ se|Northern Sami|Davvisámegiella|
 
   compatSourceSelect.addEventListener("click", event => event.stopPropagation());
   compatSourceSelect.addEventListener("change", () => {
+    // Disabled while the compat filter is off, so this never drops a chart URL's explicit u: users.
     settings.filmCompatSource = compatSourceSelect.value;
-    state.urlUsers = null;
     saveSettings();
     render();
   });
@@ -2720,7 +2743,7 @@ se|Northern Sami|Davvisámegiella|
 
       if (value === "compat" && input.checked) {
         const missing = compatScopesNeeded().find(scope => !compatFor(scope));
-        if (missing) syncCompat(false, missing);
+        if (missing) syncCompat(true, missing); // user click: same block fallback as the main toggle
       }
     });
   });
@@ -2898,7 +2921,13 @@ se|Northern Sami|Davvisámegiella|
   // music pages sync the music list, film pages only the film list.
   if ((PAGE === "release" || PAGE === "chart") && settings.userFilters.includes("compat") && OWN_USERNAME) {
     const autoScope = MEDIA !== "film" ? "music" : compatScopesNeeded().includes("film") ? "film" : null;
-    if (autoScope && compatIsStale(autoScope)) setTimeout(() => syncCompat(false, autoScope), 1500);
+    if (autoScope && compatIsStale(autoScope)) {
+      // Re-check on fire: a manual sync in the first 1.5 s may already have refreshed (or be fetching) the list.
+      setTimeout(() => {
+        if (compatSyncing || !compatIsStale(autoScope) || !settings.userFilters.includes("compat")) return;
+        syncCompat(false, autoScope);
+      }, 1500);
+    }
   }
 
   function compatStatusFor(scope) {
@@ -3018,10 +3047,14 @@ se|Northern Sami|Davvisámegiella|
     compatTopNQuick.disabled = !compatOn;
     compatSourceSelect.classList.toggle("rym-picker-hidden", MEDIA !== "film");
     compatSourceSelect.value = settings.filmCompatSource;
+    compatSourceSelect.disabled = !compatOn;
 
     $("rym-other-username-wrap").classList.toggle("rym-picker-hidden", !settings.userFilters.includes("other"));
     $("rym-compat-wrap").classList.toggle("rym-picker-hidden", !settings.userFilters.includes("compat"));
     $("rym-screen-position-wrap").classList.toggle("rym-picker-hidden", settings.placementMode !== "screen");
+    // Release types and lists are music-only; on film pages these settings would only change music defaults.
+    $("rym-setting-type-group").classList.toggle("rym-picker-hidden", MEDIA === "film");
+    $("rym-setting-lists-group").classList.toggle("rym-picker-hidden", MEDIA === "film");
 
     $("rym-detected-username").textContent = OWN_USERNAME
       ? `Using: ${OWN_USERNAME}`
@@ -3742,7 +3775,7 @@ se|Northern Sami|Davvisámegiella|
     if (href.startsWith("/genre/")) {
       const name = cleanMetadataToken(anchor.textContent);
       const slug = slugFromGenreHref(href);
-      return name && slug ? { value: name, slug } : null;
+      return name && slug ? { value: name, slug: resolveFilmGenreClickSlug(name, slug, learnedFilmSlugs) } : null;
     }
     return null;
   }
@@ -3814,7 +3847,8 @@ se|Northern Sami|Davvisámegiella|
     const text = cleanText(target.textContent);
 
     if (rowLabel === "released" || rowLabel === "release date") {
-      const year = extractYear(text) || extractYear(getRowValueText(row));
+      const pickYear = MEDIA === "film" ? extractFilmYear : extractYear;
+      const year = pickYear(text) || pickYear(getRowValueText(row));
       if (year) return { kind: "year", value: year, action: "Year" };
     }
 
