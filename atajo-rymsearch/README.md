@@ -9,7 +9,7 @@ versionada; lo que corre de verdad está en `~/.local/bin`. Tras editar: `./inst
    *Run Shell Script* → `~/.local/bin/rym` (zsh, input a stdin). No se puede exportar por terminal.
 2. **`rym`**: le pregunta a Spotify artista/álbum, limpia sufijos (Deluxe, Remaster…), arma el URL
    (DuckDuckGo `\` → primer resultado de `rateyourmusic.com/release`; `rym search` = búsqueda de RYM),
-   lo escribe en `/tmp/rym-url` y abre `~/Applications/RYM Abrir.app`.
+   lo escribe en `~/Library/Caches/rym/url` y abre `~/Applications/RYM Abrir.app`.
 3. **`RYM Abrir.app`** (applet de AppleScript, fuente en `RYM Abrir.applescript`): solo corre
    `~/.local/bin/rym-abrir`. Existe para que los permisos de Accesibilidad/Automatización sean de una
    app fija y no de la app que tengas al frente.
@@ -19,7 +19,7 @@ versionada; lo que corre de verdad está en `~/.local/bin`. Tras editar: `./inst
 5. **`rym-espacio-vacio.js`**: con ⌃→/⌃← busca el escritorio vacío más cercano (+1, −1, +2, …) en la
    pantalla donde estás; si no hay, regresa al original.
 
-Log de cada corrida: `/tmp/rym.log` (`reuso:`, `espacio:`, `ventana:`).
+Log de cada corrida: `~/Library/Caches/rym/log` (`reuso:`, `espacio:`, `ventana:`).
 
 ## Fix 2026-10-27 (escritorio vacío sin la pestaña, con y sin monitor)
 

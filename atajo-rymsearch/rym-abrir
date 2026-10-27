@@ -1,8 +1,14 @@
 #!/bin/zsh
-# Abre en Chrome la URL guardada por rym (/tmp/rym-url). Lo ejecuta "RYM Abrir.app",
+# Abre en Chrome la URL guardada por rym (~/Library/Caches/rym/url). Lo ejecuta "RYM Abrir.app",
 # que es la app que tiene los permisos de Accesibilidad/Automatización (sin importar desde qué app uses el atajo).
-url=$(</tmp/rym-url)
-log() { print -r -- "$(date +%T) $*" >> /tmp/rym.log; }
+cache=~/Library/Caches/rym
+url=$(<$cache/url)
+log() { print -r -- "$(date +%T) $*" >> $cache/log; }
+# Solo URLs que arma rym (evita que algo raro llegue a Chrome como opción de línea de comandos)
+case $url in
+  https://duckduckgo.com/\?*|https://rateyourmusic.com/*) ;;
+  *) log "url rechazada: $url"; exit 1 ;;
+esac
 
 # 1. Si ya hay una ventana de Chrome con RYM, abre el álbum como pestaña ahí y lleva a ese escritorio
 reuso=$(osascript - "$url" 2>&1 <<'EOF'

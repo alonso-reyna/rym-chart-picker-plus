@@ -32,5 +32,6 @@ else
 fi
 
 # La apertura la hace "RYM Abrir.app" para que los permisos no dependan de la app que tengas al frente
-print -r -- "$url" > /tmp/rym-url
+mkdir -p ~/Library/Caches/rym && chmod 700 ~/Library/Caches/rym
+print -r -- "$url" > ~/Library/Caches/rym/url
 open -a ~/Applications/"RYM Abrir.app"
