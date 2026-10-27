@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.3.3
+// @version      1.4.0
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
 // @downloadURL  https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
-// @description  Pick release metadata on RYM, edit charts in place, filter by your most compatible users, and open a matching chart. Fork of Lin808's RYM Music Chart Picker.
+// @description  Pick release or film metadata on RYM, edit charts in place, filter by your most compatible users, open a matching chart, and jump between RYM and Letterboxd. Fork of Lin808's RYM Music Chart Picker.
 // @author       alonsoreyna (fork of Lin808)
 // @match        https://rateyourmusic.com/release/*
 // @match        https://www.rateyourmusic.com/release/*

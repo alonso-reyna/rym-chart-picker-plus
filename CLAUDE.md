@@ -58,6 +58,24 @@ Capturados del sitio real salvo lo marcado como no verificado.
   El parser se basa en anclas `/list/<user>/<slug>/`; el bloque del fixture es una suposición.
 - `fetch` repetido desde la página dispara Cloudflare (403/503) también con listas. Ver política abajo.
 
+## Hechos de RYM verificados (2026-10-26, películas)
+
+- Película: `/film/<slug>/` (ej. `/film/monster_house/`); título `.film_title h1`; `table.film_info tr` con `th.info_hdr`
+  (Directed by, Release date, Runtime, Language, Genres); año en `meta[itemprop=dateCreated]` o
+  `a[href^="/charts/top/film/<año>/"]`; géneros `.film_pri_genres`/`.film_sec_genres a.film_genre` con
+  `href="/film_genre/Computer+Animation/"` y `title="[GenreN]"`; sin descriptores.
+- Chart de cine: `/charts/top/film/{año|2000s|2000-2010|all-time}/g:…/s:…/d:…/l:…/u:…/separate:live,archival,soundtrack/`;
+  verificados `l:en`, décadas, rangos, `g:all,…`, `s:`, `d:`.
+- El slug de género de cine no sale del href de la película: "Comedy" de cine es `comedy-1` (el `comedy` es de música);
+  un slug equivocado se ignora en silencio. El script aprende nombre→slug en charts de cine
+  (`.page_charts_section_charts_item_genres_* a.genre`) y en la página de género; semilla Comedy→comedy-1, Satire→satire-1.
+- `/film_genre/<Name>/`: cronológica, sin ranking; breadcrumb `.ui_breadcrumb_item_main`, `[GenreN]` en `div.shortcut`.
+- Compatibles de cine: `/find_similar_users?user=<u>&scope=film`, mismo markup que música.
+- Letterboxd: `og:title` "Monster House (2006)", `og:url` `/film/monster-house/`.
+- Convenciones nuevas (1.4): claves `rym_chart_picker_compat_film_v1`, `rym_chart_picker_film_genres_v1`; setting
+  `filmCompatSource` (film|music|both, default film); enlaces cruzados vía DuckDuckGo `\` (I'm feeling ducky), sin peticiones.
+- Fixtures de cine en `test/fixtures/` (film, film_genre, charts, find_similar_users, letterboxd) para el smoke test.
+
 ## Convenciones
 
 - Settings bajo la clave `rym_chart_picker_settings_v16` (compartida con el script original; no la cambies).

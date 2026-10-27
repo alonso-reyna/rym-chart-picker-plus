@@ -142,7 +142,25 @@ los usuarios que hoy salen en tu selección de compatibles (top N, exclusiones).
 
 Qué no hace: no agrupa "listas que sigues encontrando" entre varios discos (descartado).
 
-## 9. Si algo falla
+## 9. Películas y Letterboxd (1.4)
+
+**En una página de película** (`/film/...`): Search ON, clic en el año (cicla año → década → *all time*) y en los
+géneros (primera línea → `g:`, segunda → `s:`). Las películas no tienen descriptores. **Open chart** abre el chart de cine.
+
+**En la página de un género de cine** (`/film_genre/...`): hay un botón **Top chart** que abre el chart de ese género.
+Con Search ON puedes hacer clic en un año de la lista o en los géneros relacionados para sumarlos al filtro.
+
+**En un chart de cine**: igual que en música, "edit this chart" te deja cambiar el filtro en sitio.
+
+**Compatibles de cine**: en settings elige la fuente, **Film**, **Music** o **Both**. "Sync" en cine usa la lista de
+compatibles de cine. Con **Both**, el sync automático solo refresca la lista de cine; la de música se refresca al
+visitar páginas de música o con **Sync now**.
+
+**Letterboxd ↔ RYM**: en una película de RYM aparece el botón **Letterboxd** y en Letterboxd el botón **RYM**. Abren el
+primer resultado de DuckDuckGo (sin peticiones del script). El enlace **search** muestra la lista de resultados por si
+el primero no es el correcto.
+
+## 10. Si algo falla
 
 - El chart abre el ranking general (OK Computer, To Pimp a Butterfly…): el filtro no se aplicó. Mira el URL
   gris del panel y pásamelo.
