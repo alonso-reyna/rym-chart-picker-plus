@@ -14,6 +14,8 @@ const ctx = { ownUsername: "alonsoreyna", compat, pageTypeSlug: "album" };
 // slugs
 assert.equal(api.rymSlug("Alternative R&B"), "alternative-randb");
 assert.equal(api.rymSlug("Singer-Songwriter"), "singer-songwriter");
+assert.equal(api.rymSlug("Cinéma Vérité"), "cinema-verite");
+assert.equal(api.filmGenreSlug("Cinéma Vérité", {}), "cinema-verite");
 assert.equal(api.rymSlug("androgynous vocals"), "androgynous-vocals");
 assert.equal(api.slugFromGenreHref("/genre/alternative-randb/"), "alternative-randb");
 assert.equal(api.labelFromSlug("indie-folk"), "Indie Folk");

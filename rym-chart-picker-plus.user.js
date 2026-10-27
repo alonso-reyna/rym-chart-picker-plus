@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.4.0
+// @version      1.4.1
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -391,6 +391,9 @@ se|Northern Sami|Davvisámegiella|
     return String(value)
       .trim()
       .toLowerCase()
+      // RYM drops accents: "Cinéma Vérité" -> "cinema-verite".
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
       // RYM glues "&" to its neighbours: "R&B" -> "randb", "Rock & Roll" -> "rock-and-roll".
       .replace(/&/g, "and")
       .replace(/[’']/g, "")

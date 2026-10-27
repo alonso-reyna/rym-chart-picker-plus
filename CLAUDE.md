@@ -69,6 +69,7 @@ Capturados del sitio real salvo lo marcado como no verificado.
 - El slug de género de cine no sale del href de la película: "Comedy" de cine es `comedy-1` (el `comedy` es de música);
   un slug equivocado se ignora en silencio. El script aprende nombre→slug en charts de cine
   (`.page_charts_section_charts_item_genres_* a.genre`) y en la página de género; semilla Comedy→comedy-1, Satire→satire-1.
+- Los acentos se quitan en el slug: "Cinéma Vérité" → `cinema-verite` (verificado por Alonso, `g:all,cinema%2dverite`).
 - `/film_genre/<Name>/`: cronológica, sin ranking; breadcrumb `.ui_breadcrumb_item_main`, `[GenreN]` en `div.shortcut`.
 - Compatibles de cine: `/find_similar_users?user=<u>&scope=film`, mismo markup que música.
 - Letterboxd: `og:title` "Monster House (2006)", `og:url` `/film/monster-house/`.
