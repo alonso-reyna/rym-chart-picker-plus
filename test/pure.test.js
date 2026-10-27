@@ -11,6 +11,12 @@ const compat = { users: [
 ], syncedAt: Date.now() };
 const ctx = { ownUsername: "alonsoreyna", compat, pageTypeSlug: "album" };
 
+// influences "must contain all": default off, old settings migrated once, user choice kept
+assert.equal(api.DEFAULT_SETTINGS.influencesAll, false);
+assert.equal(api.normalizeSettings({ influencesAll: true }).influencesAll, false);
+assert.equal(api.normalizeSettings({ influencesAll: true, influencesAllV2: true }).influencesAll, true);
+assert.equal(api.normalizeSettings(null).influencesAll, false);
+
 // slugs
 assert.equal(api.rymSlug("Alternative R&B"), "alternative-randb");
 assert.equal(api.rymSlug("Singer-Songwriter"), "singer-songwriter");

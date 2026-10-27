@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.4.1
+// @version      1.4.2
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -337,7 +337,8 @@ se|Northern Sami|Davvisámegiella|
     screenPosition: "top-right",
     selectionStyle: "text",
     highlightColor: "#ffb000",
-    influencesAll: true,
+    influencesAll: false,
+    influencesAllV2: true,
     compatTopN: 10,
     compatMinScore: 0,
     compatMinScoreV2: true,
@@ -975,7 +976,9 @@ se|Northern Sami|Davvisámegiella|
       screenPosition: pick("screenPosition", ["top-right", "bottom-right", "top-left", "bottom-left"]),
       selectionStyle: pick("selectionStyle", ["text", "box"]),
       highlightColor: isValidHex(parsed.highlightColor) ? parsed.highlightColor : defaults.highlightColor,
-      influencesAll: parsed.influencesAll !== false,
+      // 1.4.2: default pasa a include; settings viejos (sin V2) traían true de fábrica y se resetean una vez.
+      influencesAll: parsed.influencesAllV2 === true ? parsed.influencesAll === true : false,
+      influencesAllV2: true,
       compatTopN: intIn("compatTopN", 1, 100),
       compatMinScore: minScoreMigrated ? intIn("compatMinScore", 0, 100) : 0,
       compatMinScoreV2: true,
@@ -2430,7 +2433,7 @@ se|Northern Sami|Davvisámegiella|
         <div class="rym-picker-setting">
           <span class="rym-picker-setting-title">Genre matching defaults</span>
           <div class="rym-picker-checklist">
-            <label class="rym-picker-checkitem"><input type="checkbox" id="rym-setting-influences-all"><span>Influences: must contain all (default on)</span></label>
+            <label class="rym-picker-checkitem"><input type="checkbox" id="rym-setting-influences-all"><span>Influences: must contain all (default off)</span></label>
           </div>
         </div>
 

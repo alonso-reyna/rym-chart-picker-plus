@@ -50,7 +50,7 @@ switch pequeño **must contain all** en cuanto eliges algo de esa fila:
 - Apagado → el disco necesita *alguno* (Cloud Rap **o** Ambient Pop).
 - Encendido → necesita *todos* (Cloud Rap **y** Ambient Pop). En el URL se ve como `s:all,…`.
 
-Para influencias viene **encendido por default** (se cambia en ⚙ → Genre matching defaults).
+Todo viene **apagado por default** (include). Si quieres que las influencias siempre arranquen en "must contain all", actívalo en ⚙ → Genre matching defaults.
 
 ## 5. Usuarios compatibles
 
