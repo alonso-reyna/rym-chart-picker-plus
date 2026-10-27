@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.3.2
+// @version      1.3.3
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -12,6 +12,8 @@
 // @match        https://www.rateyourmusic.com/release/*
 // @match        https://rateyourmusic.com/film/*
 // @match        https://www.rateyourmusic.com/film/*
+// @match        https://letterboxd.com/film/*
+// @match        https://www.letterboxd.com/film/*
 // @match        https://rateyourmusic.com/film_genre/*
 // @match        https://www.rateyourmusic.com/film_genre/*
 // @match        https://rateyourmusic.com/charts/*
@@ -1354,6 +1356,45 @@ se|Northern Sami|Davvisámegiella|
   }
 
   // ---------------------------------------------------------------------------
+  // RYM <-> Letterboxd buttons (run before any RYM runtime; Letterboxd pages return here)
+  // ---------------------------------------------------------------------------
+
+  function makeCrossLinks(label, site, title, year, style) {
+    const wrap = document.createElement("span");
+    wrap.className = "rym-picker-crosslinks";
+    wrap.style.cssText = style;
+    const mk = (text, lucky, small) => {
+      const a = document.createElement("a");
+      a.textContent = text;
+      a.href = buildDuckyUrl(site, title, year, lucky);
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.style.cssText = small ? "font-size:0.75em;margin-left:4px;opacity:0.8;" : "margin-left:8px;";
+      return a;
+    };
+    wrap.append(mk(label, true, false), mk("search", false, true));
+    return wrap;
+  }
+
+  // Test-only branch: lets the localhost fixture stand in for Letterboxd.
+  const isLetterboxd = /(^|\.)letterboxd\.com$/.test(location.hostname) || (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.pathname.startsWith("/letterboxd/film/"));
+  if (isLetterboxd) {
+    const og = document.querySelector('meta[property="og:title"]');
+    if (!og) return;
+    const parsed = parseLetterboxdOgTitle(og.getAttribute("content") || "");
+    if (!parsed.title) return;
+    const links = makeCrossLinks("RYM", "rateyourmusic.com/film", parsed.title, parsed.year, "font-size:14px;font-weight:normal;");
+    const h1 = document.querySelector("section.production-masthead h1, h1.headline-1, h1");
+    if (h1) {
+      h1.insertAdjacentElement("afterend", links);
+    } else {
+      links.style.cssText += "position:fixed;top:8px;right:8px;z-index:9999;background:#fff;padding:2px 6px;border-radius:4px;";
+      document.body.appendChild(links);
+    }
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
   // Runtime: page detection, storage, panel
   // ---------------------------------------------------------------------------
 
@@ -1398,6 +1439,12 @@ se|Northern Sami|Davvisámegiella|
   if (PAGE === "release") {
     state.releaseYear = detectReleaseYear();
     state.matchAll.secondary = settings.influencesAll;
+    if (MEDIA === "film") {
+      const filmH1 = document.querySelector(".film_title h1");
+      if (filmH1 && cleanText(filmH1.textContent)) {
+        filmH1.insertAdjacentElement("afterend", makeCrossLinks("Letterboxd", "letterboxd.com/film", filmH1.textContent, state.releaseYear, "font-size:14px;font-weight:normal;"));
+      }
+    }
   }
 
   // Learn film genre slugs only on film pages: a music page's /genre/comedy/ would poison the film map.
