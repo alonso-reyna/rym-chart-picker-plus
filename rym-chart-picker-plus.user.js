@@ -476,6 +476,7 @@ se|Northern Sami|Davvisámegiella|
   function createState() {
     return {
       page: "release",
+      media: "music",
       active: false,
       bodyOpen: false,
       settingsOpen: false,
@@ -497,6 +498,15 @@ se|Northern Sami|Davvisámegiella|
     };
   }
 
+  const FILM_SEPARATE_SEGMENT = "separate:live,archival,soundtrack";
+
+  function createFilmState() {
+    const state = createState();
+    state.media = "film";
+    state.extraSegments = [FILM_SEPARATE_SEGMENT];
+    return state;
+  }
+
   // Parse /charts/{listing}/{types}/{year}/{filters...}/ into a state object.
   function parseChartPath(pathname) {
     const state = createState();
@@ -515,7 +525,8 @@ se|Northern Sami|Davvisámegiella|
     const listing = LISTING_OPTIONS.some(([value]) => value === parts[1]) ? parts[1] : null;
 
     state.fromUrl = true;
-    canonicalTypeSlugs((parts[2] || "").split(",")).forEach(slug => state.types.add(slug));
+    if (parts[2] === "film") state.media = "film";
+    else canonicalTypeSlugs((parts[2] || "").split(",")).forEach(slug => state.types.add(slug));
 
     state.year = parseYearSegment(parts[3]);
 
@@ -593,6 +604,7 @@ se|Northern Sami|Davvisámegiella|
   }
 
   function buildTypeSegment(state, settings, pageTypeSlug) {
+    if (state.media === "film") return "film";
     if (state.types.size > 0) return Array.from(state.types).join(",");
     if (state.fromUrl || settings.defaultTypeMode === "all") return ALL_TYPE_SEGMENT;
 
@@ -1244,7 +1256,7 @@ se|Northern Sami|Davvisámegiella|
   const PURE_API = {
     rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
-    createState, parseChartPath, buildChartUrl, selectCompatUsers, sanitizeCompatUsers, canonicalTypeSlugs,
+    createState, createFilmState, FILM_SEPARATE_SEGMENT, parseChartPath, buildChartUrl, selectCompatUsers, sanitizeCompatUsers, canonicalTypeSlugs,
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
     ALL_TYPE_SEGMENT, TYPE_GRID, TYPE_PRESETS, DEFAULT_SETTINGS,
     LIST_LOG_CATEGORIES, LIST_OTHER_CATEGORIES, classifyListCategories, classifyListTitle,

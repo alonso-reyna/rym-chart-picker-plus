@@ -365,4 +365,22 @@ assert.ok(r6 && r6.container === big3 && r6.entries.length === 3);
 const noisy = el("div", { className: "box" }).add(card("a", "one", "One"), card("b", "two", "Two"), ...filler(30));
 assert.equal(api.parseReleaseListsSection(page2(...filler(60), noisy)), null);
 
+// film charts
+{
+  let fp = api.parseChartPath("/charts/top/film/all-time/g:comedy%2d1/d:regional/s:cartoon/separate:live,archival,soundtrack/");
+  assert.equal(fp.state.media, "film");
+  assert.equal(fp.state.types.size, 0);
+  assert.equal(api.buildChartUrl(fp.state, settings, ctx),
+    "https://rateyourmusic.com/charts/top/film/all-time/g:comedy-1/d:regional/s:cartoon/separate:live,archival,soundtrack/");
+  fp = api.parseChartPath("/charts/top/film/2000-2010/g:all,animation,family/separate:live,archival,soundtrack/");
+  assert.equal(api.buildChartUrl(fp.state, settings, ctx),
+    "https://rateyourmusic.com/charts/top/film/2000-2010/g:all,animation,family/separate:live,archival,soundtrack/");
+  const fs0 = api.createFilmState();
+  assert.equal(fs0.media, "film");
+  assert.equal(api.FILM_SEPARATE_SEGMENT, "separate:live,archival,soundtrack");
+  assert.equal(api.buildChartUrl(fs0, settings, ctx), "https://rateyourmusic.com/charts/top/film/all-time/separate:live,archival,soundtrack/");
+  assert.equal(api.parseChartPath("/charts/top/album/2010-2015/g:indie-folk/").state.media, "music");
+  assert.equal(api.createState().media, "music");
+}
+
 console.log("all tests passed");
