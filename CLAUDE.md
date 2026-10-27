@@ -9,6 +9,8 @@ Todo el código vive en `rym-chart-picker-plus.user.js`; es un solo archivo a pr
 - `test/pure.test.js`: tests de las funciones puras. `node test/pure.test.js` antes de cualquier entrega.
 - `test/fixtures/`: páginas falsas (release, chart, find_similar_users) + `stub.js` con `GM_*` falsos, para smoke test en navegador.
 - `TUTORIAL.md`: cómo se usa (para Alonso). Actualízalo cuando cambie la UI.
+- `atajo-rymsearch/`: el atajo de macOS "RYMsearch" (Spotify → RYM): `rym`, `rym-abrir`, `rym-espacio-vacio.js`.
+  Corren desde `~/.local/bin` (instalar con `./install.sh`); el Atajo solo llama `~/.local/bin/rym`. Ver su README.
 - `brainstorms/`: decisiones de diseño y hallazgos verificados en RYM. Lee el más reciente antes de proponer features.
 
 ## Cómo probar

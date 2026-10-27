@@ -1,0 +1,67 @@
+#!/bin/zsh
+# Abre en Chrome la URL guardada por rym (/tmp/rym-url). Lo ejecuta "RYM Abrir.app",
+# que es la app que tiene los permisos de Accesibilidad/Automatización (sin importar desde qué app uses el atajo).
+url=$(</tmp/rym-url)
+log() { print -r -- "$(date +%T) $*" >> /tmp/rym.log; }
+
+# 1. Si ya hay una ventana de Chrome con RYM, abre el álbum como pestaña ahí y lleva a ese escritorio
+reuso=$(osascript - "$url" 2>&1 <<'EOF'
+on run argv
+	if application id "com.google.Chrome" is not running then return "no"
+	tell application id "com.google.Chrome"
+		repeat with w in windows
+			repeat with t in tabs of w
+				if URL of t contains "rateyourmusic.com" then
+					tell w to make new tab with properties {URL:(item 1 of argv)}
+					set index of w to 1
+					activate
+					return "ok"
+				end if
+			end repeat
+		end repeat
+	end tell
+	return "no"
+end run
+EOF
+)
+log "reuso: $reuso"
+[[ "$reuso" == "ok" ]] && exit 0
+
+# 2. Si no: se pasa al escritorio vacío más cercano (en la pantalla donde estás)
+res=$(osascript -l JavaScript ~/.local/bin/rym-espacio-vacio.js 2>&1)
+log "espacio: $res"
+area=${res#* }; [[ "$area" == "$res" ]] && area=""   # "x1 y1 x2 y2" o vacío si hubo error
+
+# 3. Ventana nueva de Chrome. Se guardan los ids de las ventanas que ya existían para reconocer la nueva.
+antes=$(osascript -l JavaScript -e '
+  const c = Application("com.google.Chrome");
+  c.running() ? "," + c.windows.id().join(",") + "," : ","' 2>/dev/null)
+open -gnb com.google.Chrome --args --profile-directory="Default" --new-window "$url"
+
+# 4. Espera a que aparezca (hasta 10 s; en arranque en frío tarda), la mete en el área de esta
+#    pantalla y la trae al frente. Activar Chrome antes de que exista la ventana hacía que macOS
+#    saltara a otro escritorio con ventanas de Chrome y te dejara en el vacío.
+fin=$(osascript -l JavaScript - "$antes" "$area" 2>&1 <<'EOF'
+function run([antes, area]) {
+  const c = Application('com.google.Chrome');
+  let w = null;
+  for (let t = 0; t < 100 && !w; t++) {
+    delay(0.1);
+    try { w = c.windows().find(v => !antes.includes(',' + v.id() + ',')) || null; } catch (e) {}
+  }
+  if (!w) { c.activate(); return 'sin-ventana'; }
+  const a = (area || '').split(' ').map(Number);
+  if (a.length === 4 && a.every(Number.isFinite)) {
+    const [x1, y1, x2, y2] = a, b = w.bounds();
+    const ww = Math.min(b.width, x2 - x1), hh = Math.min(b.height, y2 - y1);
+    // si ya cae dentro del área, no la mueve; si no (p. ej. Chrome la abrió en la otra pantalla), la centra
+    const dentro = b.x >= x1 && b.y >= y1 && b.x + b.width <= x2 && b.y + b.height <= y2;
+    if (!dentro) w.bounds = { x: Math.round(x1 + (x2 - x1 - ww) / 2), y: Math.round(y1 + (y2 - y1 - hh) / 2), width: ww, height: hh };
+  }
+  w.index = 1;
+  c.activate();
+  return 'ok';
+}
+EOF
+)
+log "ventana: $fin"

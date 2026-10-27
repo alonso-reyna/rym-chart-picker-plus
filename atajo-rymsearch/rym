@@ -1,0 +1,36 @@
+#!/bin/zsh
+# Abre en RYM el álbum de lo que suena ahora en Spotify (app de escritorio, macOS).
+# Uso: rym                  -> abre directo la página del release (primer resultado)
+#      rym search            -> abre la búsqueda interna de RYM
+
+info=$(osascript <<'EOF'
+if application "Spotify" is not running then return ""
+tell application "Spotify"
+	if player state is stopped then return ""
+	return (artist of current track) & "\t" & (album of current track)
+end tell
+EOF
+)
+
+if [[ -z "$info" ]]; then
+  osascript -e 'display notification "Spotify no está reproduciendo nada" with title "RYM"'
+  exit 1
+fi
+
+artist=${info%%$'\t'*}
+album=${info#*$'\t'}
+# Quita sufijos tipo "(Deluxe Edition)", "- Remastered 2011" que ensucian la búsqueda
+album_clean=$(print -r -- "$album" | sed -E 's/ *[\(\[][^)\]]*(deluxe|remaster|edition|version|expanded|anniversary|bonus)[^)\]]*[\)\]]//I; s/ +- +.*(remaster|deluxe|edition|version).*$//I')
+
+enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote_plus(sys.argv[1]))' "$1"; }
+
+if [[ "$1" == "search" ]]; then
+  url="https://rateyourmusic.com/search?searchtype=l&searchterm=$(enc "$artist $album_clean")"
+else
+  # "\" = "I'm feeling ducky" de DuckDuckGo: redirige al primer resultado
+  url="https://duckduckgo.com/?q=$(enc "\\site:rateyourmusic.com/release $artist $album_clean")"
+fi
+
+# La apertura la hace "RYM Abrir.app" para que los permisos no dependan de la app que tengas al frente
+print -r -- "$url" > /tmp/rym-url
+open -a ~/Applications/"RYM Abrir.app"
