@@ -50,8 +50,10 @@ Capturados del sitio real salvo lo marcado como no verificado.
 - `/list_classifier/<Name>/` es plano, paginado y sin ranking (sin likes, sin filtro de género/año): inútil para descubrir.
 - Búsqueda de listas: `searchtype=s` (verificado 2026-10-22 leyendo `RYMsearch.types` en la página de búsqueda; `l` =
   releases, `a` artistas, `z` canciones, `b` sellos, `h` géneros, `u` usuarios). El setting guardado `l` se migra a `s`.
-- **No sondear RYM con varias peticiones seguidas desde el navegador de T3**: comparte la IP de Alonso y el firewall la
-  bloqueó (2026-10-22, 13 fetch en ~10 s → "IP blocked" con formulario de desbloqueo). Máximo una navegación por consulta.
+- **PROHIBIDO hacer peticiones a rateyourmusic.com desde el agente** (navegador de T3, Playwright, WebFetch, curl, lo que
+  sea): comparte la IP de Alonso y el firewall la bloqueó (2026-10-22, 13 fetch en ~10 s → "IP blocked"). Alonso lo pidió
+  explícitamente el 2026-10-26: ni "una sola para verificar". Lo que haya que comprobar en vivo lo hace Alonso y manda
+  captura o HTML guardado; el agente trabaja con fixtures en `test/fixtures/`.
 - El markup de la sección de listas en la página de release **no está verificado** (Cloudflare bloqueó la captura).
   El parser se basa en anclas `/list/<user>/<slug>/`; el bloque del fixture es una suposición.
 - `fetch` repetido desde la página dispara Cloudflare (403/503) también con listas. Ver política abajo.
