@@ -383,4 +383,18 @@ assert.equal(api.parseReleaseListsSection(page2(...filler(60), noisy)), null);
   assert.equal(api.createState().media, "music");
 }
 
+// film genre slugs
+{
+  assert.equal(api.filmGenreNameFromHref("/film_genre/Computer+Animation/"), "Computer Animation");
+  assert.equal(api.filmGenreNameFromHref("/genre/x/"), null);
+  assert.equal(api.filmGenreSlug("Comedy", {}), "comedy-1");
+  assert.equal(api.filmGenreSlug("Computer Animation", {}), "computer-animation");
+  assert.equal(api.filmGenreSlug("Horror Comedy", { "horror comedy": "horror-comedy-2" }), "horror-comedy-2");
+  assert.equal(api.filmGenreSlug("-Comedy", {}), "-comedy-1");
+  const a = (text, href) => ({ textContent: text, getAttribute: () => href });
+  const root = { querySelectorAll: sel => (sel === 'a.genre[href^="/genre/"]' ? [a(" Comedy ", "/genre/comedy-1/"), a("Bad", "/foo/")] : []) };
+  assert.deepEqual(api.parseFilmGenreSlugs(root), { comedy: "comedy-1" });
+  assert.deepEqual(api.mergeFilmGenreSlugs({ a: "a-1", b: "b-1" }, { b: "b-2" }), { a: "a-1", b: "b-2" });
+}
+
 console.log("all tests passed");

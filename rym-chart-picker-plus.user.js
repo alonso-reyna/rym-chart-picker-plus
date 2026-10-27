@@ -396,6 +396,55 @@ se|Northern Sami|Davvisámegiella|
     try { return decodeURIComponent(match[1]); } catch { return match[1]; }
   }
 
+  const FILM_GENRE_SLUG_SEED = { "comedy": "comedy-1", "satire": "satire-1" };
+
+  function filmGenreNameFromHref(href) {
+    const match = String(href || "").match(/\/film_genre\/([^/?#]+)/);
+    if (!match) return null;
+    const raw = match[1].replace(/\+/g, " ");
+    try { return decodeURIComponent(raw); } catch { return raw; }
+  }
+
+  function filmGenreSlug(name, learned) {
+    const text = String(name || "").trim();
+    const prefix = text.startsWith("-") ? "-" : "";
+    const bare = prefix ? text.slice(1).trim() : text;
+    const key = bare.toLowerCase();
+    const map = learned || {};
+    const slug = Object.prototype.hasOwnProperty.call(map, key) && map[key]
+      ? map[key]
+      : (Object.prototype.hasOwnProperty.call(FILM_GENRE_SLUG_SEED, key) ? FILM_GENRE_SLUG_SEED[key] : rymSlug(bare));
+    return prefix + slug;
+  }
+
+  function parseFilmGenreSlugs(root) {
+    const out = {};
+    if (!root || typeof root.querySelectorAll !== "function") return out;
+    for (const a of root.querySelectorAll('a.genre[href^="/genre/"]')) {
+      const slug = slugFromGenreHref(a.getAttribute("href"));
+      const name = cleanText(a.textContent).toLowerCase();
+      if (slug && name) out[name] = slug;
+    }
+    return out;
+  }
+
+  function mergeFilmGenreSlugs(stored, found) {
+    return { ...(stored || {}), ...(found || {}) };
+  }
+
+  function buildDuckyUrl(site, title, year, lucky = true) {
+    const parts = [`${lucky ? "\\" : ""}site:${site}`, cleanText(title)];
+    if (year != null && year !== "") parts.push(String(year));
+    return "https://duckduckgo.com/?q=" + encodeURIComponent(parts.filter(Boolean).join(" "));
+  }
+
+  function parseLetterboxdOgTitle(text) {
+    const value = cleanText(text);
+    const match = value.match(/^(.*?)\s*\((\d{4})\)$/);
+    if (match && match[1]) return { title: match[1], year: Number(match[2]) };
+    return { title: value, year: null };
+  }
+
   function labelFromSlug(slug) {
     return String(slug || "")
       .split("-")
@@ -1254,7 +1303,8 @@ se|Northern Sami|Davvisámegiella|
   }
 
   const PURE_API = {
-    rymSlug, slugFromGenreHref, labelFromSlug, typeFromText, typeLabel,
+    rymSlug, slugFromGenreHref, FILM_GENRE_SLUG_SEED, filmGenreNameFromHref, filmGenreSlug, parseFilmGenreSlugs, mergeFilmGenreSlugs,
+    buildDuckyUrl, parseLetterboxdOgTitle, labelFromSlug, typeFromText, typeLabel,
     yearSegment, yearLabel, parseYearSegment, cycleYear, rangeAround,
     createState, createFilmState, FILM_SEPARATE_SEGMENT, parseChartPath, buildChartUrl, selectCompatUsers, sanitizeCompatUsers, canonicalTypeSlugs,
     buildUserSegment, normalizeSettings, languageCode, parseCompatDocument,
