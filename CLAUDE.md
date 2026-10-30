@@ -119,6 +119,8 @@ Capturados del sitio real salvo lo marcado como no verificado.
   del chart de cine; el número sale de un CSS counter, el `id` es el rango). Rango guardado en `rym_chart_picker_random_v1`.
 - **Sin verificar**: 40 entradas por página (`CHART_PAGE_SIZE`) y paginación como `/charts/.../<página>/` (`splitChartPage`
   solo acepta 1–3 dígitos para no confundir un año). Si fallan, el enlace a otra página da 404; nada más se rompe.
+- 1.5.1 (pedido por Alonso): en charts el panel se ancla a la izquierda del botón "Share" de RYM (buscado por texto,
+  markup no capturado), para no tapar "Go to Recommendations". Sin Share, queda el lugar default (118px / 22px).
 
 ## Roadmap 1.2 (acordado, no empezado)
 

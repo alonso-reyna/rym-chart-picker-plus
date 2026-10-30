@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.5.0
+// @version      1.5.1
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -3349,6 +3349,7 @@ se|Northern Sami|Davvisámegiella|
     } else {
       panel.classList.add("rym-placement-page");
     }
+    anchorPanelBesideShare();
 
     const theme = settings.theme || "night";
     const key = theme === "auto" ? `auto:${document.documentElement.className}` : theme;
@@ -3362,6 +3363,29 @@ se|Northern Sami|Davvisámegiella|
       panel.style.setProperty(name, value);
     }
   }
+
+  // Chart pages: sit left of RYM's Share button, in the empty band above "Go to Recommendations".
+  // Found by its text (markup not captured); if it's missing, the default 118px/22px placement stays.
+  function findChartShareButton() {
+    if (PAGE !== "chart") return null;
+    return Array.from(document.querySelectorAll("a, button"))
+      .find(el => !panel.contains(el) && cleanText(el.textContent) === "Share"
+        && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().top + window.scrollY < 700) || null;
+  }
+
+  function anchorPanelBesideShare() {
+    const share = settings.placementMode === "screen" ? null : findChartShareButton();
+    if (!share) {
+      panel.style.top = "";
+      panel.style.right = "";
+      return;
+    }
+    const rect = share.getBoundingClientRect();
+    panel.style.top = `${Math.round(rect.top + window.scrollY)}px`;
+    panel.style.right = `${Math.round(document.documentElement.clientWidth - rect.left + 12)}px`;
+  }
+
+  if (PAGE === "chart") window.addEventListener("resize", anchorPanelBesideShare);
 
   const themeCache = { key: null, vars: {} };
 
