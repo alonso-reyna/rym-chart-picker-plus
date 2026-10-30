@@ -22,6 +22,9 @@ Todo el código vive en `rym-chart-picker-plus.user.js`; es un solo archivo a pr
 3. En RYM real: Tampermonkey instala desde el raw de GitHub (`@updateURL` en el header, repo
    `alonso-reyna/rym-chart-picker-plus`, rama `main`). Tras editar, **sube `@version`** (si no, Tampermonkey
    no actualiza), commit, push; luego "Check for userscript updates" y F5 en RYM.
+4. **Tras cada push, dale a Alonso el link de instalación** (lo pidió 2026-10-30) con el SHA del commit, que nunca sale
+   cacheado: `https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/<sha>/rym-chart-picker-plus.user.js`.
+   `/main/` y `/refs/heads/main/` pueden servir una versión vieja varios minutos (pasó con 1.5.0 y 1.5.1).
 
 ## Hechos de RYM verificados (2026-10-20)
 
