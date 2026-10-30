@@ -11,6 +11,7 @@ Todo el código vive en `rym-chart-picker-plus.user.js`; es un solo archivo a pr
 - `TUTORIAL.md`: cómo se usa (para Alonso). Actualízalo cuando cambie la UI.
 - `atajo-rymsearch/`: el atajo de macOS "RYMsearch" (Spotify → RYM): `rym`, `rym-abrir`, `rym-espacio-vacio.js`.
   Corren desde `~/.local/bin` (instalar con `./install.sh`); el Atajo solo llama `~/.local/bin/rym`. Ver su README.
+- `tools/instalar-en-chrome.sh`: abre el link de instalación (commit actual) en el Chrome de RYM.
 - `brainstorms/`: decisiones de diseño y hallazgos verificados en RYM. Lee el más reciente antes de proponer features.
 
 ## Cómo probar
@@ -22,9 +23,9 @@ Todo el código vive en `rym-chart-picker-plus.user.js`; es un solo archivo a pr
 3. En RYM real: Tampermonkey instala desde el raw de GitHub (`@updateURL` en el header, repo
    `alonso-reyna/rym-chart-picker-plus`, rama `main`). Tras editar, **sube `@version`** (si no, Tampermonkey
    no actualiza), commit, push; luego "Check for userscript updates" y F5 en RYM.
-4. **Tras cada push, dale a Alonso el link de instalación** (lo pidió 2026-10-30) con el SHA del commit, que nunca sale
-   cacheado: `https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/<sha>/rym-chart-picker-plus.user.js`.
-   `/main/` y `/refs/heads/main/` pueden servir una versión vieja varios minutos (pasó con 1.5.0 y 1.5.1).
+4. **Tras cada push, corre `tools/instalar-en-chrome.sh`** (lo pidió Alonso 2026-10-30): abre el link de instalación
+   con el SHA del commit en el Chrome donde tiene RYM (los links del chat se le abren en Safari). Pon también el link en
+   la respuesta. Se usa el SHA porque `/main/` y `/refs/heads/main/` pueden servir una versión vieja varios minutos.
 
 ## Hechos de RYM verificados (2026-10-20)
 
