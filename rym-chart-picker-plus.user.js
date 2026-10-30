@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RYM Chart Picker+
 // @namespace    https://github.com/alonso-reyna/rym-chart-picker-plus
-// @version      1.4.2
+// @version      1.5.0
 // @homepageURL  https://github.com/alonso-reyna/rym-chart-picker-plus
 // @supportURL   https://github.com/alonso-reyna/rym-chart-picker-plus/issues
 // @updateURL    https://raw.githubusercontent.com/alonso-reyna/rym-chart-picker-plus/main/rym-chart-picker-plus.user.js
@@ -1358,6 +1358,62 @@ se|Northern Sami|Davvisámegiella|
     return summary;
   }
 
+  // Random pick on charts. RYM wraps each entry in div#pos<N>, N = chart rank (seen in the film chart capture).
+  function chartPositionFromId(id) {
+    const m = /^pos(\d+)$/.exec(id || "");
+    return m ? Number(m[1]) : null;
+  }
+
+  function normalizeRandomRange(min, max) {
+    let a = Math.floor(Number(min));
+    let b = Math.floor(Number(max));
+    if (!Number.isFinite(a) || a < 1) a = 1;
+    if (!Number.isFinite(b) || b < 1) b = a;
+    if (a > b) [a, b] = [b, a];
+    return { min: a, max: b };
+  }
+
+  function pickRandomPosition(min, max, rng = Math.random) {
+    const r = normalizeRandomRange(min, max);
+    return r.min + Math.min(r.max - r.min, Math.floor(rng() * (r.max - r.min + 1)));
+  }
+
+  // Chart pages are /charts/.../<page>/ (page 1 has no number). Not verified against RYM's paginator.
+  function splitChartPage(pathname) {
+    // 1-3 digits only, so a year segment (/2015/) is never read as a page.
+    const m = /^(.*?\/)(\d{1,3})\/?$/.exec(pathname || "");
+    if (m && /^\/charts\//.test(m[1])) return { base: m[1], page: Number(m[2]) };
+    const base = (pathname || "").endsWith("/") ? pathname : `${pathname}/`;
+    return { base, page: 1 };
+  }
+
+  function chartPathForPage(base, page) {
+    return page <= 1 ? base : `${base}${page}/`;
+  }
+
+  // RYM charts show 40 entries per page (assumed, not verified).
+  const CHART_PAGE_SIZE = 40;
+
+  // Which page holds rank n, given the ranks on the current page. Ties/gaps make it an estimate.
+  // 0 = past the end (a short page 1 is the whole chart); null = no entries on this page.
+  function chartPageForPosition(n, positions, currentPage) {
+    if (!positions.length) return null;
+    const lo = Math.min(...positions);
+    const hi = Math.max(...positions);
+    if (n >= lo && n <= hi) return currentPage;
+    if (currentPage === 1 && n > hi && positions.length < CHART_PAGE_SIZE) return 0;
+    const pageSize = currentPage > 1
+      ? Math.max(1, Math.round((lo - 1) / (currentPage - 1)))
+      : Math.max(positions.length, hi);
+    return Math.floor((n - 1) / pageSize) + 1;
+  }
+
+  // Entry that shows rank n: exact id, else the tie group just above it.
+  function chartEntryForPosition(n, positions) {
+    const below = positions.filter(p => p <= n);
+    return below.length ? Math.max(...below) : null;
+  }
+
   const PURE_API = {
     rymSlug, slugFromGenreHref, FILM_GENRE_SLUG_SEED, filmGenreNameFromHref, filmGenreSlug, resolveFilmGenreClickSlug, parseFilmGenreSlugs, mergeFilmGenreSlugs,
     extractYear, extractFilmYear,
@@ -1371,7 +1427,9 @@ se|Northern Sami|Davvisámegiella|
     listPathKey, safeListHref, parseListIdText, parseLikesText, parseItemsFromNav, parseItemsFromMeta, buildListSearchUrl,
     parseListDocument, parseUserListsDocument, parseReleaseListsSection,
     LIST_CACHE_MAX, LIST_CACHE_MAX_AGE_MS, pruneListCache, isListEntryFresh,
-    validOverride, resolveListEntry, sortStarred, mergeListCaches, mergeStarred, runFetchQueue, isListsExcludedNode
+    validOverride, resolveListEntry, sortStarred, mergeListCaches, mergeStarred, runFetchQueue, isListsExcludedNode,
+    chartPositionFromId, normalizeRandomRange, pickRandomPosition, splitChartPage, chartPathForPage,
+    chartPageForPosition, chartEntryForPosition
   };
 
   if (typeof module !== "undefined" && module.exports) {
@@ -1532,6 +1590,8 @@ se|Northern Sami|Davvisámegiella|
     learnedFilmSlugs = merged;
     if (JSON.stringify(merged) !== JSON.stringify(stored)) GM_setValue(FILM_GENRES_KEY, JSON.stringify(merged));
   }
+
+  const RANDOM_KEY = "rym_chart_picker_random_v1";
 
   function readStored(key) {
     const raw = GM_getValue(key, "");
@@ -2007,6 +2067,16 @@ se|Northern Sami|Davvisámegiella|
     #rym-picker-panel.rym-page-filmgenre #rym-picker-toggle-body-btn,
     #rym-picker-panel.rym-page-filmgenre #rym-picker-quick-open-btn { display: flex; }
 
+    #rym-random-row { display: none; flex-wrap: wrap; align-items: center; gap: 5px; padding: 6px 10px; background: var(--rym-bg-2); border-bottom: 1px solid var(--rym-border); font-size: 12px; }
+    #rym-picker-panel.rym-page-chart #rym-random-row { display: flex; }
+    #rym-random-row .rym-random-label { color: var(--rym-muted); }
+    #rym-random-row input { width: 52px; padding: 2px 4px; background: var(--rym-bg-3); color: var(--rym-text); border: 1px solid var(--rym-border-2); border-radius: 3px; font: inherit; }
+    #rym-random-roll { border: 0; background: var(--rym-blue); color: var(--rym-button-text); border-radius: 3px; padding: 3px 10px; cursor: pointer; font: inherit; font-weight: 700; }
+    #rym-random-roll:hover { background: var(--rym-blue-hover); }
+    #rym-random-result { margin-left: auto; font-weight: 700; }
+    #rym-random-result a { color: #4aa3ff; }
+    .rym-random-hit { outline: 3px solid #f5b301 !important; outline-offset: 2px; background: rgba(245,179,1,.14) !important; border-radius: 3px; }
+
     #rym-film-genre-top {
       display: inline-block; margin: 6px 0; padding: 4px 10px; border-radius: 3px;
       background: #1676d2; color: #fff !important; font-weight: 600; text-decoration: none !important;
@@ -2274,6 +2344,15 @@ se|Northern Sami|Davvisámegiella|
         </svg>
       </button>
       <button id="rym-picker-settings-btn" title="Settings">⚙</button>
+    </div>
+
+    <div id="rym-random-row" title="Pick a random chart position">
+      <span class="rym-random-label">Random</span>
+      <input type="number" id="rym-random-min" min="1" step="1" aria-label="From">
+      <span>–</span>
+      <input type="number" id="rym-random-max" min="1" step="1" aria-label="To">
+      <button type="button" id="rym-random-roll">Roll</button>
+      <span id="rym-random-result"></span>
     </div>
 
     <div id="rym-picker-body">
@@ -4425,6 +4504,94 @@ se|Northern Sami|Davvisámegiella|
 
   if (PAGE === "chart") {
     state.bodyOpen = false;
+    setupRandomPick();
+  }
+
+  function setupRandomPick() {
+    const PENDING_KEY = "rym_chart_picker_random_pending";
+    const minInput = $("rym-random-min");
+    const maxInput = $("rym-random-max");
+    const result = $("rym-random-result");
+    const entries = () => Array.from(document.querySelectorAll('div[id^="pos"]'))
+      .map(el => ({ el, pos: chartPositionFromId(el.id) }))
+      .filter(e => e.pos !== null);
+    const { base, page } = splitChartPage(location.pathname);
+
+    let saved = null;
+    try { saved = readStored(RANDOM_KEY); } catch { saved = null; }
+    const onPage = entries().map(e => e.pos);
+    const range = normalizeRandomRange(
+      saved ? saved.min : 1,
+      saved ? saved.max : (onPage.length ? Math.max(...onPage) : 40)
+    );
+    minInput.value = range.min;
+    maxInput.value = range.max;
+
+    function saveRange() {
+      const r = normalizeRandomRange(minInput.value, maxInput.value);
+      GM_setValue(RANDOM_KEY, JSON.stringify(r));
+      return r;
+    }
+
+    function highlight(n) {
+      const list = entries();
+      const target = chartEntryForPosition(n, list.map(e => e.pos));
+      document.querySelectorAll(".rym-random-hit").forEach(el => el.classList.remove("rym-random-hit"));
+      const hit = list.find(e => e.pos === target);
+      if (!hit) return false;
+      hit.el.classList.add("rym-random-hit");
+      hit.el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    function showHit(n) {
+      const shown = chartEntryForPosition(n, entries().map(e => e.pos));
+      result.textContent = shown === n ? `#${n}` : `#${n} (shown as #${shown})`;
+    }
+
+    function roll() {
+      const r = saveRange();
+      minInput.value = r.min;
+      maxInput.value = r.max;
+      const n = pickRandomPosition(r.min, r.max);
+      const positions = entries().map(e => e.pos);
+      const targetPage = chartPageForPosition(n, positions, page);
+      result.textContent = "";
+      if (targetPage === page && highlight(n)) {
+        showHit(n);
+        return;
+      }
+      if (targetPage === null) {
+        result.textContent = `#${n}: no chart entries found`;
+        return;
+      }
+      if (targetPage === 0) {
+        result.textContent = `#${n}: chart ends at #${Math.max(...positions)}`;
+        return;
+      }
+      // Not on this page: link to the page that should hold it and highlight on arrival.
+      const link = document.createElement("a");
+      link.href = `${chartPathForPage(base, targetPage)}#pos${n}`;
+      link.textContent = `#${n} → page ${targetPage}`;
+      link.addEventListener("click", () => {
+        try { sessionStorage.setItem(PENDING_KEY, String(n)); } catch {}
+      });
+      result.appendChild(link);
+    }
+
+    $("rym-random-roll").addEventListener("click", roll);
+    [minInput, maxInput].forEach(input => {
+      input.addEventListener("change", saveRange);
+      input.addEventListener("keydown", e => { if (e.key === "Enter") roll(); });
+    });
+
+    let pending = null;
+    try { pending = sessionStorage.getItem(PENDING_KEY); sessionStorage.removeItem(PENDING_KEY); } catch {}
+    if (pending && /^\d+$/.test(pending)) {
+      const n = Number(pending);
+      if (highlight(n)) showHit(n);
+      else result.textContent = `#${n} not on this page`;
+    }
   }
 
   // Film genre pages list films chronologically; this links the all-time top chart of just that genre.

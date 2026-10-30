@@ -454,4 +454,31 @@ assert.equal(api.parseReleaseListsSection(page2(...filler(60), noisy)), null);
   assert.equal(api.extractYear("1 January 1999"), 1999);
 }
 
+// random pick on charts
+assert.equal(api.chartPositionFromId("pos55"), 55);
+assert.equal(api.chartPositionFromId("position"), null);
+assert.deepEqual(api.normalizeRandomRange(100, 1), { min: 1, max: 100 });
+assert.deepEqual(api.normalizeRandomRange("", "abc"), { min: 1, max: 1 });
+assert.equal(api.pickRandomPosition(1, 100, () => 0), 1);
+assert.equal(api.pickRandomPosition(1, 100, () => 0.999999), 100);
+assert.equal(api.pickRandomPosition(1, 100, () => 0.54), 55);
+assert.deepEqual(api.splitChartPage("/charts/top/album/all-time/"), { base: "/charts/top/album/all-time/", page: 1 });
+assert.deepEqual(api.splitChartPage("/charts/top/album/all-time/3/"), { base: "/charts/top/album/all-time/", page: 3 });
+assert.deepEqual(api.splitChartPage("/charts/top/album/2015/"), { base: "/charts/top/album/2015/", page: 1 });
+assert.equal(api.chartPathForPage("/charts/top/album/all-time/", 1), "/charts/top/album/all-time/");
+assert.equal(api.chartPathForPage("/charts/top/album/all-time/", 2), "/charts/top/album/all-time/2/");
+{
+  const page1 = Array.from({ length: 40 }, (_, i) => i + 1);
+  const page2 = Array.from({ length: 40 }, (_, i) => i + 41);
+  assert.equal(api.chartPageForPosition(20, page1, 1), 1);
+  assert.equal(api.chartPageForPosition(55, page1, 1), 2);
+  assert.equal(api.chartPageForPosition(100, page1, 1), 3);
+  assert.equal(api.chartPageForPosition(5, page2, 2), 1);
+  assert.equal(api.chartPageForPosition(81, page2, 2), 3);
+  assert.equal(api.chartPageForPosition(5, [], 1), null);
+  assert.equal(api.chartPageForPosition(62, [1, 2, 4, 6], 1), 0);
+  assert.equal(api.chartEntryForPosition(3, [1, 2, 4, 6]), 2);
+  assert.equal(api.chartEntryForPosition(4, [1, 2, 4, 6]), 4);
+}
+
 console.log("all tests passed");

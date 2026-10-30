@@ -79,6 +79,14 @@ géneros, descriptores, idiomas y usuarios del URL actual. Cambia lo que quieras
 Si el chart traía usuarios en el URL, el chip dice `from URL (N users)` y se respeta hasta que toques el
 filtro de usuarios en settings.
 
+### Random (1.5)
+
+En cualquier chart, debajo de la barra azul hay una fila **Random [1] – [N] Roll**. Pones el rango (ej. 1 – 100),
+picas **Roll** (o Enter en un campo) y sale un número: si está en esta página, la entrada se marca con borde
+amarillo y la página baja hasta ella. Si cae en otra página, sale un enlace `#55 → page 2`; al abrirlo, la entrada
+llega marcada. Si el chart es más corto que el rango, dice `chart ends at #N`. Si el número cae en un empate o hueco
+de RYM, marca la entrada de arriba: `#3 (shown as #2)`. El rango se recuerda entre charts.
+
 ## 6. Recetas para listas
 
 | Quieres | Haz |

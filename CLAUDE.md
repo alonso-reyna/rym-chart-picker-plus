@@ -113,6 +113,13 @@ Capturados del sitio real salvo lo marcado como no verificado.
 
 - Listas 1.3: `parseReleaseListsSection` falla cerrado (devuelve `null` si el contenedor no es acotado: body/#content, >=60 % de los enlaces, >4 enlaces por lista). Los fetch automáticos solo en release/chart. Escrituras de caché/estrellas se fusionan con lo guardado (`mergeListCaches`/`mergeStarred`). Entradas con lectura >30 días se tratan como no leídas.
 
+## Random pick en charts (1.5)
+
+- Fila `#rym-random-row` bajo el header, solo en `PAGE === "chart"`. Entradas = `div#pos<N>` (verificado en la captura
+  del chart de cine; el número sale de un CSS counter, el `id` es el rango). Rango guardado en `rym_chart_picker_random_v1`.
+- **Sin verificar**: 40 entradas por página (`CHART_PAGE_SIZE`) y paginación como `/charts/.../<página>/` (`splitChartPage`
+  solo acepta 1–3 dígitos para no confundir un año). Si fallan, el enlace a otra página da 404; nada más se rompe.
+
 ## Roadmap 1.2 (acordado, no empezado)
 
 Presets guardados · canasta persistente entre discos · exclusión con Shift+clic (`-slug`) · atajos de teclado ·
